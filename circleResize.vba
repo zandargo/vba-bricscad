@@ -11,6 +11,7 @@ Sub ResizeAndColorCircles()
     Dim originalDiameter As Double
     Dim newDiameter As Double
     Dim targetDiameter As Double
+	 Dim margin As Double
     Dim lowerBound As Double
     Dim upperBound As Double
     Dim centerPoint As Variant
@@ -43,8 +44,9 @@ Sub ResizeAndColorCircles()
                 newDiameter = diametersArray(i)(1)
 
                 ' with a safety margin of 2% for more or less.
-                lowerBound = targetDiameter * 0.98
-                upperBound = targetDiameter * 1.02
+					 margin = 0.02
+                lowerBound = targetDiameter * (1 - margin)
+                upperBound = targetDiameter * (1 + margin)
 
                 If originalDiameter >= lowerBound And originalDiameter <= upperBound Then
                     ' Store center point before resizing
