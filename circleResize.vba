@@ -16,6 +16,7 @@ Sub ResizeAndColorCircles()
     Dim upperBound As Double
     Dim centerPoint As Variant
     Dim tempEntity As Object
+    Dim entity_idx As Long ' Declare index for backward loop
 
     ' Set the active document and model space
     On Error Resume Next
@@ -33,8 +34,19 @@ Sub ResizeAndColorCircles()
     ' Add more pairs as needed, e.g.:
     ' diametersArray = Array(Array(3.2, 1.9), Array(13.65, 13.5), Array(20.0, 15.0))
 
-    ' 2. Iterate the current drawing and search for every circle
-    For Each entity In modelSpace
+    ' 2. Iterate the current drawing and search for every circle (iterate backwards)
+    ' For entity_idx = modelSpace.Count - 1 To 0 Step -1 ' Previous loop structure
+    entity_idx = modelSpace.Count - 1 ' Initialize for Do While loop
+    Do While entity_idx >= 0
+        ' Before accessing Item(entity_idx), ensure entity_idx is still valid
+        ' as modelSpace.Count might have changed due to deletions in previous iterations of this outer loop.
+        If entity_idx >= modelSpace.Count Then
+            entity_idx = modelSpace.Count - 1 ' Re-align index with the current end of the collection
+            If entity_idx < 0 Then Exit Do     ' Collection is now empty, nothing more to process
+        End If
+
+        Set entity = modelSpace.Item(entity_idx)
+
         If TypeOf entity Is AcadCircle Then
             Set circleObj = entity
             originalDiameter = circleObj.Diameter
@@ -59,42 +71,33 @@ Sub ResizeAndColorCircles()
                     circleObj.Color = acRed ' 1 = Red
 
                     ' 5. Delete every other circle concentric to that circle.
-                    ' Iterate again to find concentric circles (excluding the one just modified)
-                    Dim tempEntityCollection As Object ' AcadBlock
-                    Set tempEntityCollection = modelSpace
-                    Dim k As Integer
-                    k = 0
-                    Do While k < tempEntityCollection.Count
-                        Set tempEntity = tempEntityCollection.Item(k)
+                    ' The inner loop (For k...) is generally fine as it iterates backwards.
+                    Dim k As Long ' Use Long for index
+                    For k = modelSpace.Count - 1 To 0 Step -1 
+                        ' Check if k is out of bounds (it shouldn't be with a For...Step -1 loop, but as an extra safe guard)
+                        If k >= modelSpace.Count Then k = modelSpace.Count -1
+                        If k < 0 Then Exit For ' modelSpace might have become empty
+
+                        Set tempEntity = modelSpace.Item(k)
                         If TypeOf tempEntity Is AcadCircle Then
                             Set otherCircleObj = tempEntity
-                            ' Check if it's not the same circle and if it's concentric
+                            ' Check if it's not the same circle (handle comparison) and if it's concentric
                             If Not otherCircleObj.Handle = circleObj.Handle Then
                                 If PointsAreEqual(otherCircleObj.Center, centerPoint) Then
                                     otherCircleObj.Delete
-                                    ' If an entity is deleted, the collection count might change,
-                                    ' so we don't increment k to re-check the current index.
-                                    ' However, a safer approach is to iterate backwards or build a list to delete.
-                                    ' For simplicity here, we re-evaluate count and might miss some in complex scenarios
-                                    ' A more robust way is to collect handles and delete them after the main loop.
-                                    ' Or iterate backwards: For k = tempEntityCollection.Count - 1 To 0 Step -1
-                                Else
-                                    k = k + 1
                                 End If
-                            Else
-                                k = k + 1
                             End If
-                        Else
-                            k = k + 1
                         End If
-                    Loop
+                    Next k ' End of inner loop for deletion
                     
-                    ' Exit the inner loop once a match is found and processed for this circle
+                    ' Exit the inner loop (diametersArray loop) once a match is found and processed for this circle
                     Exit For
                 End If
             Next i
         End If
-    Next entity
+        entity_idx = entity_idx - 1 ' Decrement for the Do While loop
+    ' Next entity_idx ' This was the end of the For loop
+    Loop ' This is the end of the Do While loop
 
     acadDoc.Regen acAllViewports
     MsgBox "Circle processing complete.", vbInformation
