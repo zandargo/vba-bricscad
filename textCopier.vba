@@ -55,7 +55,7 @@ Sub TextCopier_Main()
             ' as the next step will re-scan the modelspace for texts.
             If Err.Number <> 0 Then
                 ' Optional: Log or notify if an object couldn't be exploded
-                ' MsgBox "Could not explode object: " & objToExplode.ObjectName & " (Handle: " & objToExplode.Handle & ")"
+                MsgBox "Could not explode object: " & objToExplode.ObjectName & " (Handle: " & objToExplode.Handle & ")"
                 Err.Clear
             End If
             On Error GoTo ErrorHandler ' Restore main error handler
