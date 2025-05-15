@@ -45,20 +45,22 @@ Sub TextCopier_Main()
 
     ' Explode collected objects
     ' Iterating a separate collection for explosion is safer
-    For Each objToExplode In objectsOnLayer
-        On Error Resume Next ' To skip objects that cannot be exploded
-        explodedItems = objToExplode.Explode
-        ' objToExplode is now deleted if successfully exploded.
-        ' explodedItems contains an array of new entities.
-        ' We don't need to process explodedItems directly here,
-        ' as the next step will re-scan the modelspace for texts.
-        If Err.Number <> 0 Then
-            ' Optional: Log or notify if an object couldn't be exploded
-            ' MsgBox "Could not explode object: " & objToExplode.ObjectName & " (Handle: " & objToExplode.Handle & ")"
-            Err.Clear
-        End If
-        On Error GoTo ErrorHandler ' Restore main error handler
-    Next objToExplode
+    For 1 to 4
+        For Each objToExplode In objectsOnLayer
+            On Error Resume Next ' To skip objects that cannot be exploded
+            explodedItems = objToExplode.Explode
+            ' objToExplode is now deleted if successfully exploded.
+            ' explodedItems contains an array of new entities.
+            ' We don't need to process explodedItems directly here,
+            ' as the next step will re-scan the modelspace for texts.
+            If Err.Number <> 0 Then
+                ' Optional: Log or notify if an object couldn't be exploded
+                ' MsgBox "Could not explode object: " & objToExplode.ObjectName & " (Handle: " & objToExplode.Handle & ")"
+                Err.Clear
+            End If
+            On Error GoTo ErrorHandler ' Restore main error handler
+        Next objToExplode
+    Next i
     
     ' Regenerate to reflect explosions before searching for text
     acadDoc.Regen acAllViewports
