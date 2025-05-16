@@ -68,7 +68,7 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
         End If
     Next entity    ' --- 4. If there is none, end script. Else, get text from form control ---
     If textObjectsOnLayer.Count = 0 Then
-        ' MsgBox "No text objects found on layer '" & layerName & "' after explosion.", vbInformation
+        ' MsgBox "Nenhum objeto de texto encontrado na camada '" & layerName & "' após a conversão.", vbInformation
         GoTo Cleanup
     End If
 
@@ -83,7 +83,7 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
     End If
     On Error GoTo ErrorHandler
     If Trim(userInputText) = "" Then
-        MsgBox "Por favor, digite o texto a ser adicionado no campo 'Texto'.", vbExclamation, "Texto não Informado"
+        MsgBox "Por favor, digite o texto a ser adicionado no campo 'Texto'.", vbExclamation, "Texto não informado"
         GoTo Cleanup
     End If
 
@@ -120,7 +120,7 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
     Next textObj
 
     acadDoc.Regen acAllViewports
-    MsgBox "Text objects copied and modified successfully.", vbInformation
+    MsgBox "Objetos de texto copiados e modificados com sucesso.", vbInformation
 
 Cleanup:
     Set acadDoc = Nothing
@@ -134,9 +134,9 @@ Cleanup:
     Exit Sub
 
 ErrorHandler:
-    MsgBox "An error occurred: " & Err.Description & vbCrLf & _
-           "Error Number: " & Err.Number & vbCrLf & _
-           "Error Source: " & Err.Source, vbCritical, "Script Error"
+    MsgBox "Ocorreu um erro: " & Err.Description & vbCrLf & _
+           "Número do erro: " & Err.Number & vbCrLf & _
+           "Fonte do erro: " & Err.Source, vbCritical, "Erro de Script"
     Resume Cleanup
 End Sub
 
@@ -183,7 +183,7 @@ Public Sub TextCopier_Del(Optional ByVal layerNameParam As String = "")
     End If
     On Error GoTo 0
     If Trim(textToDeleteValue) = "" Then
-        MsgBox "Por favor, digite o texto a ser excluído no campo 'Texto' do formulário.", vbExclamation, "Texto para Exclusão não Informado"
+        MsgBox "Por favor, digite o texto a ser excluído no campo 'Texto' do formulário.", vbExclamation, "Texto para exclusão não informado"
         Exit Sub
     End If
 
@@ -204,7 +204,7 @@ Public Sub TextCopier_Del(Optional ByVal layerNameParam As String = "")
 
     ' --- 2. If there is none, end script. Else, explode them ---
     If objectsOnLayer.Count = 0 Then
-        MsgBox "No objects found on layer '" & layerName & "'.", vbInformation
+        MsgBox "Nenhum objeto encontrado na camada '" & layerName & "'.", vbInformation
         GoTo Cleanup
     End If
 
@@ -246,7 +246,7 @@ Public Sub TextCopier_Del(Optional ByVal layerNameParam As String = "")
 
     ' --- 4. If there are no text objects, end script. Else, get text to delete from form control ---
     If textObjectsOnLayer.Count = 0 Then
-        MsgBox "No text objects found on layer '" & layerName & "' after explosion.", vbInformation
+        MsgBox "Nenhum objeto de texto encontrado na camada '" & layerName & "' após a explosão.", vbInformation
         GoTo Cleanup
     End If
 
@@ -266,7 +266,7 @@ Public Sub TextCopier_Del(Optional ByVal layerNameParam As String = "")
     Next textObj
 
     acadDoc.Regen acAllViewports
-    MsgBox deletedCount & " text object(s) matching '" & textToDeleteValue & "' deleted successfully from layer '" & layerName & "'.", vbInformation
+    MsgBox deletedCount & " objeto(s) de texto correspondente(s) a '" & textToDeleteValue & "' excluído(s) com sucesso da camada '" & layerName & "'.", vbInformation
 
 Cleanup:
     Set acadDoc = Nothing
@@ -279,9 +279,9 @@ Cleanup:
     Exit Sub
 
 ErrorHandler:
-    MsgBox "An error occurred in TextCopier_Del: " & Err.Description & vbCrLf & _
-           "Error Number: " & Err.Number & vbCrLf & _
-           "Error Source: " & Err.Source, vbCritical, "Script Error"
+    MsgBox "Ocorreu um erro em TextCopier_Del: " & Err.Description & vbCrLf & _
+           "Número do erro: " & Err.Number & vbCrLf & _
+           "Fonte do erro: " & Err.Source, vbCritical, "Erro de Script"
     Resume Cleanup
 End Sub
 

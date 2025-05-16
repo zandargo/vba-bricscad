@@ -52,13 +52,13 @@ Public Sub MText_To_Text(Optional ByVal layerNameParam As String = "")
     
     mTextCount = mtextObjectsOnLayer.Count
     If mTextCount = 0 Then
-      '   MsgBox "No MText objects found on layer '" & layerName & "'.", vbInformation
+      '   MsgBox "Nenhum objeto MText encontrado na camada '" & layerName & "'.", vbInformation
         GoTo Cleanup
     End If
     
     ' Show progress message
-   '  MsgBox "Found " & mTextCount & " MText objects on layer '" & layerName & "'." & vbCrLf & _
-   '         "Attempting to convert them to Text objects...", vbInformation
+   '  MsgBox "Encontrados " & mTextCount & " objetos MText na camada '" & layerName & "'." & vbCrLf & _
+   '         "Tentando convertê-los para objetos de texto...", vbInformation
       ' --- Try to explode MText objects first ---
     ' This is a more reliable way to convert MText to Text in BricsCAD
     ' Process each MText object individually for greater reliability
@@ -89,7 +89,7 @@ Public Sub MText_To_Text(Optional ByVal layerNameParam As String = "")
         
         ' Check if explosion approach worked
         If conversionCount > 0 Then
-            ' MsgBox conversionCount & " of " & mTextCount & " MText objects were exploded on layer '" & _
+            ' MsgBox conversionCount & " de " & mTextCount & " objetos MText foram explodidos na camada '" & _
                    layerName & "'.", vbInformation
               ' Check if we need to continue with alternate approach
             If conversionCount >= mTextCount Then
@@ -114,7 +114,7 @@ Public Sub MText_To_Text(Optional ByVal layerNameParam As String = "")
     
     mTextCount = mtextObjectsOnLayer.Count
     If mTextCount = 0 Then
-      '   MsgBox "All MText objects were successfully exploded.", vbInformation
+      '   MsgBox "Todos os objetos MText foram explodidos com sucesso.", vbInformation
         GoTo Cleanup
     End If
     
@@ -190,7 +190,7 @@ Public Sub MText_To_Text(Optional ByVal layerNameParam As String = "")
     
     ' Update the display and inform the user
     acadDoc.Regen acAllViewports
-    MsgBox conversionCount & " of " & mTextCount & " MText objects converted to Text on layer '" & _
+    MsgBox conversionCount & " de " & mTextCount & " objetos MText convertidos para Texto na camada '" & _
            layerName & "'.", vbInformation
     
 Cleanup:
@@ -202,9 +202,9 @@ Cleanup:
     Exit Sub
     
 ErrorHandler:
-    MsgBox "An error occurred: " & Err.Description & vbCrLf & _
-           "Error Number: " & Err.Number & vbCrLf & _
-           "Error Source: " & Err.Source, vbCritical, "Script Error"
+    MsgBox "Ocorreu um erro: " & Err.Description & vbCrLf & _
+           "Número do erro: " & Err.Number & vbCrLf & _
+           "Fonte do erro: " & Err.Source, vbCritical, "Erro de Script"
     Resume Cleanup
 End Sub
 
