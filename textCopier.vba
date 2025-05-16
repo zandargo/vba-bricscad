@@ -1,6 +1,9 @@
 Option Explicit
 
-Sub TextCopier_Main()
+Dim i As Long
+
+
+Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
     Dim acadDoc As Object ' AcadDocument
     Dim modelSpace As Object ' AcadModelSpace
     Dim entity As Object ' AcadEntity
@@ -20,7 +23,24 @@ Sub TextCopier_Main()
     Dim objToExplode As Object
     Dim explodedItems As Variant
 
-    layerName = "Gravação"
+    ' --- Form Access and Input Validation ---
+    If layerNameParam = "" Then
+        On Error Resume Next
+        layerName = formPerfisul01.cbCamada01.Value
+        If Err.Number <> 0 Then
+            MsgBox "Erro ao acessar o controle de camada no formulário.", vbCritical, "Erro de Controle"
+            Err.Clear
+            Exit Sub
+        End If
+        On Error GoTo 0
+        If layerName = "-- Selecione uma camada --" Or layerName = "" Then
+            MsgBox "Por favor, selecione uma camada válida.", vbExclamation, "Seleção de Camada"
+            Exit Sub
+        End If
+    Else
+        layerName = layerNameParam
+    End If
+
     copyDistance = 8.0 ' 8mm
 
     On Error GoTo ErrorHandler
@@ -43,25 +63,75 @@ Sub TextCopier_Main()
         GoTo Cleanup
     End If
 
-    ' Explode collected objects
-    ' Iterating a separate collection for explosion is safer
-    For 1 to 4
+
+    ' Explode collected objects: repeat as long as at least 1 successful explosion occurs (max 10 cycles for safety)
+    Dim explosionCycle As Long
+    Dim explosionOccurred As Boolean
+    explosionCycle = 0
+
+    Do
+        explosionOccurred = False
+        explosionCycle = explosionCycle + 1
         For Each objToExplode In objectsOnLayer
             On Error Resume Next ' To skip objects that cannot be exploded
-            explodedItems = objToExplode.Explode
-            ' objToExplode is now deleted if successfully exploded.
-            ' explodedItems contains an array of new entities.
-            ' We don't need to process explodedItems directly here,
-            ' as the next step will re-scan the modelspace for texts.
-            If Err.Number <> 0 Then
-                ' Optional: Log or notify if an object couldn't be exploded
-                MsgBox "Could not explode object: " & objToExplode.ObjectName & " (Handle: " & objToExplode.Handle & ")"
+            ' Try to explode MText as well as other objects
+            If TypeOf objToExplode Is AcadMText Then
+                explodedItems = objToExplode.Explode
+            Else
+                explodedItems = objToExplode.Explode
+            End If
+            If Err.Number = 0 Then
+                explosionOccurred = True
+            Else
                 Err.Clear
             End If
             On Error GoTo ErrorHandler ' Restore main error handler
         Next objToExplode
-    Next i
-    
+        ' Re-collect objects on the layer for the next cycle
+        Set objectsOnLayer = New Collection
+        For Each entity In modelSpace
+            If entity.Layer = layerName Then
+                objectsOnLayer.Add entity
+            End If
+        Next entity
+        ' Limit to 10 cycles to avoid infinite loop
+        If explosionCycle >= 10 Then Exit Do
+    Loop While explosionOccurred And objectsOnLayer.Count > 0
+
+
+
+    ' --- Convert any remaining MText objects on the layer to Text objects (manual conversion, no explode) ---
+    Dim mtextObj As Object
+    Dim newTextObj As Object
+    Dim mtextConvertedCount As Long
+    mtextConvertedCount = 0
+    For Each entity In modelSpace
+        If entity.Layer = layerName Then
+            If entity.ObjectName = "AcDbMText" Then
+                Set mtextObj = entity
+                On Error Resume Next
+                Set newTextObj = modelSpace.AddText(mtextObj.Text, mtextObj.InsertionPoint, mtextObj.Height)
+                If Err.Number = 0 Then
+                    newTextObj.Layer = mtextObj.Layer
+                    newTextObj.StyleName = mtextObj.StyleName
+                    newTextObj.Color = mtextObj.Color
+                    ' Try to set rotation if available
+                    On Error Resume Next
+                    newTextObj.Rotation = mtextObj.Rotation
+                    On Error GoTo 0
+                    newTextObj.Update
+                    mtextObj.Delete
+                    mtextConvertedCount = mtextConvertedCount + 1
+                End If
+                Err.Clear
+                On Error GoTo 0
+            End If
+        End If
+    Next entity
+    If mtextConvertedCount > 0 Then
+        acadDoc.Regen acAllViewports
+    End If
+
     ' Regenerate to reflect explosions before searching for text
     acadDoc.Regen acAllViewports
 
@@ -73,17 +143,24 @@ Sub TextCopier_Main()
                 textObjectsOnLayer.Add entity
             End If
         End If
-    Next entity
-
-    ' --- 4. If there is none, end script. Else, ask the user the name of text to be added. ---
+    Next entity    ' --- 4. If there is none, end script. Else, get text from form control ---
     If textObjectsOnLayer.Count = 0 Then
         MsgBox "No text objects found on layer '" & layerName & "' after explosion.", vbInformation
         GoTo Cleanup
     End If
 
-    userInputText = InputBox("Enter the text to be added to the copied texts:", "Text Input", "Carroceria") ' Added example as default
-    If userInputText = "" Then
-        MsgBox "No text input provided. Script will exit.", vbInformation
+
+    ' Get the text from the form control cbTexto01
+    On Error Resume Next
+    userInputText = formPerfisul01.cbTexto01.Value
+    If Err.Number <> 0 Then
+        MsgBox "Erro ao acessar o controle de texto no formulário.", vbCritical, "Erro de Controle"
+        Err.Clear
+        GoTo Cleanup
+    End If
+    On Error GoTo ErrorHandler
+    If Trim(userInputText) = "" Then
+        MsgBox "Por favor, digite o texto a ser adicionado no campo 'Texto'.", vbExclamation, "Texto não Informado"
         GoTo Cleanup
     End If
 
@@ -135,6 +212,151 @@ Cleanup:
 
 ErrorHandler:
     MsgBox "An error occurred: " & Err.Description & vbCrLf & _
+           "Error Number: " & Err.Number & vbCrLf & _
+           "Error Source: " & Err.Source, vbCritical, "Script Error"
+    Resume Cleanup
+End Sub
+
+
+Public Sub TextCopier_Del(Optional ByVal layerNameParam As String = "")
+    Dim acadDoc As Object ' AcadDocument
+    Dim modelSpace As Object ' AcadModelSpace
+    Dim entity As Object ' AcadEntity
+    Dim textObj As Object ' AcadText
+    Dim layerName As String
+    Dim objectsOnLayer As Collection
+    Dim textObjectsOnLayer As Collection
+    Dim textToDeleteValue As String
+    Dim objToExplode As Object
+    Dim explodedItems As Variant
+    Dim deletedCount As Long
+    deletedCount = 0
+
+    ' --- Form Access and Input Validation ---
+    ' Directly reference the form controls (formPerfisul01 must be loaded)
+    If layerNameParam = "" Then
+        On Error Resume Next
+        layerName = formPerfisul01.cbCamada01.Value
+        If Err.Number <> 0 Then
+            MsgBox "Erro ao acessar o controle de camada no formulário.", vbCritical, "Erro de Controle"
+            Err.Clear
+            Exit Sub
+        End If
+        On Error GoTo 0
+        If layerName = "-- Selecione uma camada --" Or layerName = "" Then
+            MsgBox "Por favor, selecione uma camada válida no formulário.", vbExclamation, "Seleção de Camada Inválida"
+            Exit Sub
+        End If
+    Else
+        layerName = layerNameParam
+    End If
+
+    On Error Resume Next
+    textToDeleteValue = formPerfisul01.cbTexto01.Value
+    If Err.Number <> 0 Then
+        MsgBox "Erro ao acessar o controle de texto no formulário.", vbCritical, "Erro de Controle"
+        Err.Clear
+        Exit Sub
+    End If
+    On Error GoTo 0
+    If Trim(textToDeleteValue) = "" Then
+        MsgBox "Por favor, digite o texto a ser excluído no campo 'Texto' do formulário.", vbExclamation, "Texto para Exclusão não Informado"
+        Exit Sub
+    End If
+
+    ' --- Main Logic ---
+    On Error GoTo ErrorHandler ' Set main error handler for the rest of the sub
+
+    ' Get the current document and model space
+    Set acadDoc = ThisDrawing
+    Set modelSpace = acadDoc.ModelSpace
+
+    ' --- 1. Search for all objects in the specified layer ---
+    Set objectsOnLayer = New Collection
+    For Each entity In modelSpace
+        If entity.Layer = layerName Then
+            objectsOnLayer.Add entity
+        End If
+    Next entity
+
+    ' --- 2. If there is none, end script. Else, explode them ---
+    If objectsOnLayer.Count = 0 Then
+        MsgBox "No objects found on layer '" & layerName & "'.", vbInformation
+        GoTo Cleanup
+    End If
+
+    ' Explode collected objects (iterating 4 times, similar to TextCopier_Add)
+    Dim explosionCycle As Long
+    For explosionCycle = 1 To 4 ' Corrected loop syntax
+        ' Re-collect objects on the layer in each cycle as new ones might appear from explosions
+        Set objectsOnLayer = New Collection
+        For Each entity In modelSpace
+            If entity.Layer = layerName Then
+                objectsOnLayer.Add entity
+            End If
+        Next entity
+        
+        If objectsOnLayer.Count = 0 Then Exit For ' No more objects to explode on this layer
+
+        For Each objToExplode In objectsOnLayer
+            On Error Resume Next ' To skip objects that cannot be exploded
+            explodedItems = objToExplode.Explode
+            If Err.Number <> 0 Then
+                Err.Clear
+            End If
+            On Error GoTo ErrorHandler ' Restore main error handler
+        Next objToExplode
+    Next explosionCycle
+    
+    ' Regenerate to reflect explosions before searching for text
+    acadDoc.Regen acAllViewports
+
+    ' --- 3. Search all text objects in the specified layer ---
+    Set textObjectsOnLayer = New Collection
+    For Each entity In modelSpace ' Re-iterate modelspace as new text entities might exist after explosion
+        If entity.Layer = layerName Then
+            If TypeOf entity Is AcadText Then
+                textObjectsOnLayer.Add entity
+            End If
+        End If
+    Next entity
+
+    ' --- 4. If there are no text objects, end script. Else, get text to delete from form control ---
+    If textObjectsOnLayer.Count = 0 Then
+        MsgBox "No text objects found on layer '" & layerName & "' after explosion.", vbInformation
+        GoTo Cleanup
+    End If
+
+    ' --- 5. Delete text objects with value equal to textToDeleteValue ---
+    For Each textObj In textObjectsOnLayer
+        On Error Resume Next ' In case of issues with a specific text object
+        If textObj.TextString = textToDeleteValue Then
+            textObj.Delete
+            If Err.Number = 0 Then ' Check if delete was successful
+                deletedCount = deletedCount + 1
+            Else
+                ' Optionally log or inform about a text object that couldn't be deleted
+                Err.Clear
+            End If
+        End If
+        On Error GoTo ErrorHandler ' Restore main error handler
+    Next textObj
+
+    acadDoc.Regen acAllViewports
+    MsgBox deletedCount & " text object(s) matching '" & textToDeleteValue & "' deleted successfully from layer '" & layerName & "'.", vbInformation
+
+Cleanup:
+    Set acadDoc = Nothing
+    Set modelSpace = Nothing
+    Set objectsOnLayer = Nothing
+    Set textObjectsOnLayer = Nothing
+    Set entity = Nothing
+    Set textObj = Nothing
+    Set objToExplode = Nothing
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "An error occurred in TextCopier_Del: " & Err.Description & vbCrLf & _
            "Error Number: " & Err.Number & vbCrLf & _
            "Error Source: " & Err.Source, vbCritical, "Script Error"
     Resume Cleanup

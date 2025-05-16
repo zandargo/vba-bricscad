@@ -1,6 +1,6 @@
 Option Explicit
 
-Sub ResizeAndColorCircles()
+Public Sub ResizeAndColorCircles()
     Dim acadDoc As Object ' AcadDocument
     Dim modelSpace As Object ' AcadModelSpace
     Dim entity As Object ' AcadEntity
