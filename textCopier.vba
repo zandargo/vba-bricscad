@@ -41,7 +41,8 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
         layerName = layerNameParam
     End If
 
-    copyDistance = 8.0 ' 8mm
+    ' Calculate copy distance based on the height of the source text object (1.85 * height)
+    ' Will be set inside the loop for each text object
 
     On Error GoTo ErrorHandler
 
@@ -91,7 +92,10 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
     ' --- 6. Modify the content of copied text to the inputed value ---
     For Each textObj In textObjectsOnLayer
         Set entity = textObj ' To be explicit that textObj is an AcadEntity
-        
+
+        ' Calculate copy distance based on the height of the source text object
+        copyDistance = 1.85 * entity.Height
+
         originalPoint = entity.InsertionPoint
         rotationAngle = entity.Rotation ' This is in Radians
 
@@ -111,7 +115,7 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
         ' Modify the copied text
         copiedTextObj.InsertionPoint = newPoint
         copiedTextObj.TextString = userInputText
-        
+
         ' Ensure the copied text is on the correct layer (Copy method should preserve it, but good to be sure)
         If copiedTextObj.Layer <> layerName Then
             copiedTextObj.Layer = layerName
