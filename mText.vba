@@ -52,13 +52,13 @@ Public Sub MText_To_Text(Optional ByVal layerNameParam As String = "")
     
     mTextCount = mtextObjectsOnLayer.Count
     If mTextCount = 0 Then
-        MsgBox "No MText objects found on layer '" & layerName & "'.", vbInformation
+      '   MsgBox "No MText objects found on layer '" & layerName & "'.", vbInformation
         GoTo Cleanup
     End If
     
     ' Show progress message
-    MsgBox "Found " & mTextCount & " MText objects on layer '" & layerName & "'." & vbCrLf & _
-           "Attempting to convert them to Text objects...", vbInformation
+   '  MsgBox "Found " & mTextCount & " MText objects on layer '" & layerName & "'." & vbCrLf & _
+   '         "Attempting to convert them to Text objects...", vbInformation
       ' --- Try to explode MText objects first ---
     ' This is a more reliable way to convert MText to Text in BricsCAD
     ' Process each MText object individually for greater reliability
@@ -89,7 +89,7 @@ Public Sub MText_To_Text(Optional ByVal layerNameParam As String = "")
         
         ' Check if explosion approach worked
         If conversionCount > 0 Then
-            MsgBox conversionCount & " of " & mTextCount & " MText objects were exploded on layer '" & _
+            ' MsgBox conversionCount & " of " & mTextCount & " MText objects were exploded on layer '" & _
                    layerName & "'.", vbInformation
               ' Check if we need to continue with alternate approach
             If conversionCount >= mTextCount Then
@@ -114,7 +114,7 @@ Public Sub MText_To_Text(Optional ByVal layerNameParam As String = "")
     
     mTextCount = mtextObjectsOnLayer.Count
     If mTextCount = 0 Then
-        MsgBox "All MText objects were successfully exploded.", vbInformation
+      '   MsgBox "All MText objects were successfully exploded.", vbInformation
         GoTo Cleanup
     End If
     

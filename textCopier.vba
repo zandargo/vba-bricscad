@@ -49,95 +49,18 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
     Set acadDoc = ThisDrawing
     Set modelSpace = acadDoc.ModelSpace
 
-    ' --- 1. Search for all objects in layer 'Gravação' ---
-    Set objectsOnLayer = New Collection
-    For Each entity In modelSpace
-        If entity.Layer = layerName Then
-            objectsOnLayer.Add entity
-        End If
-    Next entity
+    ' --- Call MText_To_Text to handle MText conversion and explosion ---
+    Call MText_To_Text(layerName)
 
-    ' --- 2. If there is none, end script. Else, explode them ---
-    If objectsOnLayer.Count = 0 Then
-        MsgBox "No objects found on layer '" & layerName & "'.", vbInformation
-        GoTo Cleanup
-    End If
+    ' --- The explosion loop and manual MText conversion are no longer needed here,
+    ' --- as MText_To_Text handles these operations.
 
-
-    ' Explode collected objects: repeat as long as at least 1 successful explosion occurs (max 10 cycles for safety)
-    Dim explosionCycle As Long
-    Dim explosionOccurred As Boolean
-    explosionCycle = 0
-
-    Do
-        explosionOccurred = False
-        explosionCycle = explosionCycle + 1
-        For Each objToExplode In objectsOnLayer
-            On Error Resume Next ' To skip objects that cannot be exploded
-            ' Try to explode MText as well as other objects
-            If TypeOf objToExplode Is AcadMText Then
-                explodedItems = objToExplode.Explode
-            Else
-                explodedItems = objToExplode.Explode
-            End If
-            If Err.Number = 0 Then
-                explosionOccurred = True
-            Else
-                Err.Clear
-            End If
-            On Error GoTo ErrorHandler ' Restore main error handler
-        Next objToExplode
-        ' Re-collect objects on the layer for the next cycle
-        Set objectsOnLayer = New Collection
-        For Each entity In modelSpace
-            If entity.Layer = layerName Then
-                objectsOnLayer.Add entity
-            End If
-        Next entity
-        ' Limit to 10 cycles to avoid infinite loop
-        If explosionCycle >= 10 Then Exit Do
-    Loop While explosionOccurred And objectsOnLayer.Count > 0
-
-
-
-    ' --- Convert any remaining MText objects on the layer to Text objects (manual conversion, no explode) ---
-    Dim mtextObj As Object
-    Dim newTextObj As Object
-    Dim mtextConvertedCount As Long
-    mtextConvertedCount = 0
-    For Each entity In modelSpace
-        If entity.Layer = layerName Then
-            If entity.ObjectName = "AcDbMText" Then
-                Set mtextObj = entity
-                On Error Resume Next
-                Set newTextObj = modelSpace.AddText(mtextObj.Text, mtextObj.InsertionPoint, mtextObj.Height)
-                If Err.Number = 0 Then
-                    newTextObj.Layer = mtextObj.Layer
-                    newTextObj.StyleName = mtextObj.StyleName
-                    newTextObj.Color = mtextObj.Color
-                    ' Try to set rotation if available
-                    On Error Resume Next
-                    newTextObj.Rotation = mtextObj.Rotation
-                    On Error GoTo 0
-                    newTextObj.Update
-                    mtextObj.Delete
-                    mtextConvertedCount = mtextConvertedCount + 1
-                End If
-                Err.Clear
-                On Error GoTo 0
-            End If
-        End If
-    Next entity
-    If mtextConvertedCount > 0 Then
-        acadDoc.Regen acAllViewports
-    End If
-
-    ' Regenerate to reflect explosions before searching for text
+    ' Regenerate to reflect any changes made by MText_To_Text
     acadDoc.Regen acAllViewports
 
     ' --- 3. Search all text objects in layer 'Gravação' ---
     Set textObjectsOnLayer = New Collection
-    For Each entity In modelSpace ' Re-iterate modelspace as new text entities might exist after explosion
+    For Each entity In modelSpace ' Re-iterate modelspace as new text entities might exist after MText_To_Text
         If entity.Layer = layerName Then
             If TypeOf entity Is AcadText Then
                 textObjectsOnLayer.Add entity
@@ -145,7 +68,7 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
         End If
     Next entity    ' --- 4. If there is none, end script. Else, get text from form control ---
     If textObjectsOnLayer.Count = 0 Then
-        MsgBox "No text objects found on layer '" & layerName & "' after explosion.", vbInformation
+        ' MsgBox "No text objects found on layer '" & layerName & "' after explosion.", vbInformation
         GoTo Cleanup
     End If
 
