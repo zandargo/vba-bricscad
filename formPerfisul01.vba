@@ -80,4 +80,6 @@ Private Sub btnDelText01_Click()
 End Sub
 
 
-
+Private Sub btnLimparCamada01_Click()
+    Call LayerClean_Del(cbCamada02.Value)
+End Sub
