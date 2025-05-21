@@ -83,3 +83,11 @@ End Sub
 Private Sub btnLimparCamada01_Click()
     Call LayerClean_Del(cbCamada02.Value)
 End Sub
+
+Private Sub cmdTxtList1_Click()
+    Call TextSorter_IndexTexts()
+End Sub
+
+Private Sub cmdListClean01_Click()
+    Call LayerClean_Del("Index")
+End Sub
