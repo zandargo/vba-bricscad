@@ -18,6 +18,10 @@ Public Sub ResizeAndColorCircles()
     Dim tempEntity As Object
     Dim entity_idx As Long ' Declare index for backward loop
 
+    ' Additional variables for programmatic array creation
+    Dim tempPairsCollection As Collection
+    Dim k_idx As Long ' Loop index for converting collection to array
+
     ' Set the active document and model space
     On Error Resume Next
     Set acadDoc = ThisDrawing
@@ -29,10 +33,35 @@ Public Sub ResizeAndColorCircles()
     
     Set modelSpace = acadDoc.ModelSpace
 
-    ' 1. Has an array of pair of digits. Example: [ [3.2, 1.9], [13.65, 13.5] ]
-    diametersArray = Array(Array(3.2, 1.9), Array(9, 13.5))
-    ' Add more pairs as needed, e.g.:
-    ' diametersArray = Array(Array(3.2, 1.9), Array(13.65, 13.5), Array(20.0, 15.0))
+    ' 1. Programmatically build the array of diameter pairs.
+    '    This allows for easier addition of a large number of pairs.
+    Set tempPairsCollection = New Collection
+
+    ' Add your pairs here. Each line adds one pair.
+    ' Format: tempPairsCollection.Add Array(OriginalDiameter, NewDiameter)
+    tempPairsCollection.Add Array(3.2   , 1.9  )
+    tempPairsCollection.Add Array(3.4   , 3.5  )
+    tempPairsCollection.Add Array(9     , 13.5 )
+    tempPairsCollection.Add Array(6     , 6    )
+    tempPairsCollection.Add Array(13.65 , 13.5 )
+    tempPairsCollection.Add Array(20.0  , 15.0 )
+
+    ' Add more pairs below as needed:
+    ' tempPairsCollection.Add Array(25.0, 17.5)
+    ' tempPairsCollection.Add Array(30.0, 22.5)
+
+    ' Convert the collection to the 0-indexed diametersArray
+    If tempPairsCollection.Count > 0 Then
+        ReDim diametersArray(0 To tempPairsCollection.Count - 1)
+        For k_idx = 0 To tempPairsCollection.Count - 1
+            diametersArray(k_idx) = tempPairsCollection(k_idx + 1) ' Collection is 1-indexed
+        Next k_idx
+    Else
+        ' If no pairs are added, create an empty array so LBound/UBound don't fail,
+        ' and the subsequent loop For i = LBound(diametersArray) To UBound(diametersArray)
+        ' correctly does not iterate. (UBound will be -1, LBound will be 0)
+        ReDim diametersArray(0 To -1)
+    End If
 
     ' 2. Iterate the current drawing and search for every circle (iterate backwards)
     ' For entity_idx = modelSpace.Count - 1 To 0 Step -1 ' Previous loop structure
@@ -69,6 +98,8 @@ Public Sub ResizeAndColorCircles()
                     
                     ' 4. Change the circle color to red
                     circleObj.Color = acRed ' 1 = Red
+                    ' Set the linetype to Continuous
+                    circleObj.Linetype = "Continuous"
 
                     ' 5. Delete every other circle concentric to that circle.
                     ' The inner loop (For k...) is generally fine as it iterates backwards.
