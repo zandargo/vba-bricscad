@@ -20,9 +20,7 @@ Public Sub ResizeAndColorCircles()
 
     ' Additional variables for programmatic array creation
     Dim tempPairsCollection As Collection
-    Dim k_idx As Long ' Loop index for converting collection to array
-
-    ' Set the active document and model space
+    Dim k_idx As Long ' Loop index for converting collection to array    ' Set the active document and model space
     On Error Resume Next
     Set acadDoc = ThisDrawing
     If acadDoc Is Nothing Then
@@ -32,6 +30,10 @@ Public Sub ResizeAndColorCircles()
     On Error GoTo 0
     
     Set modelSpace = acadDoc.ModelSpace
+    
+    ' Get or create the "Puncionadeira" layer and set its color to red
+    Dim puncionadeiraLayer As Object
+    Set puncionadeiraLayer = GetOrCreateLayer(acadDoc, "Puncionadeira", acRed)
 
     ' 1. Programmatically build the array of diameter pairs.
     '    This allows for easier addition of a large number of pairs.
@@ -39,12 +41,16 @@ Public Sub ResizeAndColorCircles()
 
     ' Add your pairs here. Each line adds one pair.
     ' Format: tempPairsCollection.Add Array(OriginalDiameter, NewDiameter)
-    tempPairsCollection.Add Array(3.2   , 1.9  )
-    tempPairsCollection.Add Array(3.4   , 3.5  )
-    tempPairsCollection.Add Array(9     , 13.5 )
+    tempPairsCollection.Add Array(1.6   , 1.6  )
+    tempPairsCollection.Add Array(2     , 2    )
+    tempPairsCollection.Add Array(3     , 3    )
+    tempPairsCollection.Add Array(3.2   , 3.2  )
+    tempPairsCollection.Add Array(3.242 , 1.9  )
+    tempPairsCollection.Add Array(4     , 4    )
     tempPairsCollection.Add Array(6     , 6    )
-    tempPairsCollection.Add Array(13.65 , 13.5 )
-    tempPairsCollection.Add Array(20.0  , 15.0 )
+    tempPairsCollection.Add Array(9     , 13.5 )
+    tempPairsCollection.Add Array(22    , 22   )
+    tempPairsCollection.Add Array(28    , 28   )
 
     ' Add more pairs below as needed:
     ' tempPairsCollection.Add Array(25.0, 17.5)
@@ -84,20 +90,18 @@ Public Sub ResizeAndColorCircles()
                 targetDiameter = diametersArray(i)(0)
                 newDiameter = diametersArray(i)(1)
 
-                ' with a safety margin of 2% for more or less.
-					 margin = 0.02
+                ' with a safety margin of % for more or less.
+					 margin = 0.01
                 lowerBound = targetDiameter * (1 - margin)
                 upperBound = targetDiameter * (1 + margin)
 
                 If originalDiameter >= lowerBound And originalDiameter <= upperBound Then
                     ' Store center point before resizing
-                    centerPoint = circleObj.Center
-
-                    ' 3. Resize that circle to the corresponding value in the pair
+                    centerPoint = circleObj.Center                    ' 3. Resize that circle to the corresponding value in the pair
                     circleObj.Diameter = newDiameter
                     
-                    ' 4. Change the circle color to red
-                    circleObj.Color = acRed ' 1 = Red
+                    ' 4. Move the circle to the "Puncionadeira" layer instead of changing its color
+                    circleObj.Layer = "Puncionadeira"
                     ' Set the linetype to Continuous
                     circleObj.Linetype = "Continuous"
 
@@ -144,6 +148,28 @@ Private Function PointsAreEqual(p1 As Variant, p2 As Variant, Optional tolerance
     Else
         PointsAreEqual = False
     End If
+End Function
+
+Private Function GetOrCreateLayer(acadDoc As Object, layerName As String, colorIndex As Integer) As Object
+    Dim layer As Object
+    Dim layers As Object
+    
+    ' Get the layers collection from the document
+    Set layers = acadDoc.Layers
+    
+    ' Try to get the layer if it exists
+    On Error Resume Next
+    Set layer = layers.Item(layerName)
+    On Error GoTo 0
+    
+    ' If the layer doesn't exist, create it
+    If layer Is Nothing Then
+        Set layer = layers.Add(layerName)
+        layer.Color = colorIndex
+    End If
+    
+    ' Return the layer object
+    Set GetOrCreateLayer = layer
 End Function
 
 ' To run this macro in BricsCAD:
