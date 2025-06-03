@@ -91,3 +91,7 @@ End Sub
 Private Sub cmdListClean01_Click()
     Call LayerClean_Del("Index")
 End Sub
+
+Private Sub btnPerimetroTotal_Click()
+    Call SumTotalPerimeter
+End Sub
