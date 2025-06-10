@@ -98,5 +98,24 @@ Public Sub TextSorter_IndexTexts()
     Next i
 
     acadDoc.Regen acAllViewports
-    MsgBox "Indexação concluída com sucesso.", vbInformation
+
+    ' Count equal texts
+    Dim dict As Object
+    Dim txt As Variant
+    Dim eqCount As Long
+    Set dict = CreateObject("Scripting.Dictionary")
+    For i = 1 To UBound(textData, 1)
+        txt = textData(i, 1)
+        If dict.Exists(txt) Then
+            dict(txt) = dict(txt) + 1
+        Else
+            dict(txt) = 1
+        End If
+    Next i
+    eqCount = 0
+    For Each txt In dict.Keys
+        If dict(txt) > 1 Then eqCount = eqCount + dict(txt)
+    Next
+
+    MsgBox "Indexação concluída com sucesso." & vbCrLf & "Quantidade de textos iguais encontrados: " & eqCount, vbInformation
 End Sub
