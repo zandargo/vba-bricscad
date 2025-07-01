@@ -81,9 +81,21 @@ Public Sub TextSorter_IndexTexts()
     indexLayer.Color = 1 ' Red
 
     ' 6. Add index text to the left of each sorted text object
+    ' Create index numbering that repeats for identical texts
+    Dim currentIndex As Long
+    currentIndex = 1
+    
     For i = 1 To UBound(textData, 1)
         Set textObj = textData(i, 2)
-        indexValue = CStr(i)
+        
+        ' If this is not the first item and text is different from previous, increment index
+        If i > 1 Then
+            If textData(i, 1) <> textData(i - 1, 1) Then
+                currentIndex = currentIndex + 1
+            End If
+        End If
+        
+        indexValue = CStr(currentIndex)
         indexHeight = 8 * textObj.Height
         offsetX = -20 * textObj.Height ' 12x height to the left
         Dim insPt As Variant
@@ -116,6 +128,11 @@ Public Sub TextSorter_IndexTexts()
     For Each txt In dict.Keys
         If dict(txt) > 1 Then eqCount = eqCount + dict(txt)
     Next
+    
+    Dim uniqueCount As Long
+    uniqueCount = dict.Count
 
-    MsgBox "Indexação concluída com sucesso." & vbCrLf & "Quantidade de textos iguais encontrados: " & eqCount, vbInformation
+    MsgBox "Indexação concluída com sucesso." & vbCrLf & _
+           "Quantidade de textos iguais encontrados: " & eqCount & vbCrLf & _
+           "Valores únicos: " & uniqueCount, vbInformation
 End Sub
