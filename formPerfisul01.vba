@@ -11,7 +11,7 @@ Private Sub UserForm_Initialize()
         Exit Sub
     End If
     
-    Set acadLayers = acadDoc.Layers
+    Set acadLayers = acadDoc.layers
     
     ' Clear the combo box first
     cbCamada01.Clear
@@ -29,12 +29,12 @@ Private Sub UserForm_Initialize()
         cbCamada02.AddItem layerObj.Name
     Next layerObj
 
-	 cbTexto01.AddItem "CARROCERIA"
-	 cbTexto01.AddItem "FERRAMENTARIA"
-	 cbTexto01.AddItem "PORTAS"
-	 cbTexto01.AddItem "TAMPA"
-	 cbTexto01.AddItem "TETO"
-	 cbTexto01.AddItem "VIDROS"
+     cbTexto01.AddItem "CARROCERIA"
+     cbTexto01.AddItem "FERRAMENTARIA"
+     cbTexto01.AddItem "PORTAS"
+     cbTexto01.AddItem "TAMPA"
+     cbTexto01.AddItem "TETO"
+     cbTexto01.AddItem "VIDROS"
     
     On Error GoTo 0
 End Sub
@@ -85,7 +85,7 @@ Private Sub btnLimparCamada01_Click()
 End Sub
 
 Private Sub cmdTxtList1_Click()
-    Call TextSorter_IndexTexts()
+    Call TextSorter_IndexTexts
 End Sub
 
 Private Sub cmdListClean01_Click()
@@ -94,4 +94,13 @@ End Sub
 
 Private Sub btnPerimetroTotal_Click()
     Call SumTotalPerimeter
+End Sub
+
+
+Private Sub cmdFixDouble_Click()
+    Call FixDuplicatedCodes
+End Sub
+
+Private Sub btnCircleAligner_Click()
+    Call CircleAligner
 End Sub
