@@ -13,67 +13,91 @@ Public Sub FixSmallGaps()
     
 	Set doc = ThisDrawing
     
+	' Ask user about unit handling preference
+	Dim unitChoice As VbMsgBoxResult
+	unitChoice = MsgBox("How should drawing units be handled?" & vbCrLf & vbCrLf & _
+	                   "YES = Assume drawing is in METERS" & vbCrLf & _
+	                   "NO = Try to detect units automatically" & vbCrLf & _
+	                   "CANCEL = Exit", vbYesNoCancel + vbQuestion, "Unit Selection")
+	
+	If unitChoice = vbCancel Then Exit Sub
+    
 	' Get drawing units to properly convert input values
 	Dim unitFactor As Double
 	Dim unitName As String
-	unitFactor = 0.001 ' Default to meters (convert mm input to meters)
-	unitName = "Meters (assumed)"
 	
-	' Try to determine units from drawing settings with multiple methods
-	On Error Resume Next
-	Dim insUnits As Integer
-	insUnits = -1 ' Initialize to invalid value
-	
-	' First try: Database InsUnits
-	If doc.Database Is Nothing = False Then
-		insUnits = doc.Database.InsUnits
+	If unitChoice = vbYes Then
+		' User chose to assume meters
+		unitFactor = 0.001 ' Convert mm input to meters
+		unitName = "Meters (user selected)"
+	Else
+		' User chose automatic detection
+		unitFactor = 0.001 ' Default to meters (convert mm input to meters)
+		unitName = "Meters (assumed)"
+		
+		' Try to determine units from drawing settings with multiple methods
+		On Error Resume Next
+		Dim insUnits As Integer
+		insUnits = -1 ' Initialize to invalid value
+		
+		' First try: Database InsUnits
+		If doc.Database Is Nothing = False Then
+			insUnits = doc.Database.InsUnits
+		End If
+		
+		' Second try: System variable INSUNITS
+		If insUnits = -1 Or insUnits = 0 Then
+			insUnits = doc.GetVariable("INSUNITS")
+		End If
+		
+		' Third try: System variable LUNITS (linear units)
+		If insUnits = -1 Or insUnits = 0 Then
+			Dim lUnits As Integer
+			lUnits = doc.GetVariable("LUNITS")
+			' LUNITS doesn't directly give us the unit type, but we can make educated guess
+			' If LUNITS is set, assume the drawing has been configured properly
+		End If
+		
+		On Error GoTo 0
+		
+		' Interpret the units
+		Select Case insUnits
+			Case 1 ' Inches
+				unitFactor = 25.4 ' Convert mm input to inches
+				unitName = "Inches"
+			Case 2 ' Feet
+				unitFactor = 304.8 ' Convert mm input to feet
+				unitName = "Feet"
+			Case 4 ' Millimeters
+				unitFactor = 1 ' No conversion needed
+				unitName = "Millimeters"
+			Case 5 ' Centimeters
+				unitFactor = 0.1 ' Convert mm input to cm
+				unitName = "Centimeters"
+			Case 6 ' Meters
+				unitFactor = 0.001 ' Convert mm input to meters
+				unitName = "Meters"
+			Case Else ' Unknown or unitless - assume meters
+				unitFactor = 0.001 ' Convert mm input to meters
+				unitName = "Meters (default)"
+		End Select
 	End If
-	
-	' Second try: System variable INSUNITS
-	If insUnits = -1 Or insUnits = 0 Then
-		insUnits = doc.GetVariable("INSUNITS")
-	End If
-	
-	' Third try: System variable LUNITS (linear units)
-	If insUnits = -1 Or insUnits = 0 Then
-		Dim lUnits As Integer
-		lUnits = doc.GetVariable("LUNITS")
-		' LUNITS doesn't directly give us the unit type, but we can make educated guess
-		' If LUNITS is set, assume the drawing has been configured properly
-	End If
-	
-	On Error GoTo 0
-	
-	' Interpret the units
-	Select Case insUnits
-		Case 1 ' Inches
-			unitFactor = 25.4 ' Convert mm input to inches
-			unitName = "Inches"
-		Case 2 ' Feet
-			unitFactor = 304.8 ' Convert mm input to feet
-			unitName = "Feet"
-		Case 4 ' Millimeters
-			unitFactor = 1 ' No conversion needed
-			unitName = "Millimeters"
-		Case 5 ' Centimeters
-			unitFactor = 0.1 ' Convert mm input to cm
-			unitName = "Centimeters"
-		Case 6 ' Meters
-			unitFactor = 0.001 ' Convert mm input to meters
-			unitName = "Meters"
-		Case Else ' Unknown or unitless - assume meters
-			unitFactor = 0.001 ' Convert mm input to meters
-			unitName = "Meters (default)"
-	End Select
     
 	minGap = CDbl(InputBox("Enter minimum gap value (mm):", "Fix Small Gaps", "0.001")) / unitFactor
 	maxGap = CDbl(InputBox("Enter maximum gap value (mm):", "Fix Small Gaps", "0.05")) / unitFactor
 	
 	' Debug: Show unit conversion info
-	MsgBox "Drawing units: " & unitName & " (Code: " & insUnits & ")" & vbCrLf & _
-	       "Unit factor: " & unitFactor & vbCrLf & _
-	       "Min gap in drawing units: " & minGap & vbCrLf & _
-	       "Max gap in drawing units: " & maxGap, vbInformation, "Debug Info"
+	If unitChoice = vbYes Then
+		MsgBox "Drawing units: " & unitName & vbCrLf & _
+		       "Unit factor: " & unitFactor & vbCrLf & _
+		       "Min gap in drawing units: " & minGap & vbCrLf & _
+		       "Max gap in drawing units: " & maxGap, vbInformation, "Debug Info"
+	Else
+		MsgBox "Drawing units: " & unitName & " (Code: " & insUnits & ")" & vbCrLf & _
+		       "Unit factor: " & unitFactor & vbCrLf & _
+		       "Min gap in drawing units: " & minGap & vbCrLf & _
+		       "Max gap in drawing units: " & maxGap, vbInformation, "Debug Info"
+	End If
     
 	' Collect all endpoints of lines, arcs, and polylines
 	ReDim endpoints(0 To 0)
