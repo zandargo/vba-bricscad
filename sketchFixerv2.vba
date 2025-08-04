@@ -11,6 +11,7 @@ Public Sub FixSmallGaps()
     Dim minGapMm As Double, maxGapMm As Double
     Dim response As String
     Dim userResponse As VbMsgBoxResult
+    Dim unitFactor As Double
     
     ' Initialize document and model space
     Set doc = ThisDrawing
@@ -19,15 +20,45 @@ Public Sub FixSmallGaps()
     ' Get gap values from user (in mm)
     response = InputBox("Enter minimum gap value in mm:", "Minimum Gap", "0.001")
     If response = "" Then Exit Sub
-    minGapMm = CDbl(response)
+    ' Handle decimal separator issues (replace comma with period if needed)
+    response = Replace(response, ",", ".")
+    minGapMm = Val(response)
+    MsgBox "Debug: minGapMm = " & minGapMm, vbInformation ' Debug line
     
     response = InputBox("Enter maximum gap value in mm:", "Maximum Gap", "0.05")
     If response = "" Then Exit Sub
-    maxGapMm = CDbl(response)
+    ' Handle decimal separator issues (replace comma with period if needed)
+    response = Replace(response, ",", ".")
+    maxGapMm = Val(response)
+    MsgBox "Debug: maxGapMm = " & maxGapMm, vbInformation ' Debug line
     
-    ' Convert from mm to meters (AutoCAD/BricsCAD units)
-    minGap = minGapMm / 1000 / 1000
-    maxGap = maxGapMm / 1000 / 1000
+    ' Convert from mm to drawing units
+    ' Ask user about drawing units to ensure correct conversion
+    Dim unitsResponse As String
+    unitsResponse = InputBox("What are your drawing units?" & vbCrLf & _
+                           "Enter 'mm' for millimeters" & vbCrLf & _
+                           "Enter 'm' for meters" & vbCrLf & _
+                           "Enter 'in' for inches", _
+                           "Drawing Units", "m")
+    If unitsResponse = "" Then Exit Sub
+    
+    Select Case LCase(unitsResponse)
+        Case "mm"
+            unitFactor = 1 ' No conversion needed
+        Case "m"
+            unitFactor = 0.001 ' Convert mm to meters
+        Case "in"
+            unitFactor = 1 / 25.4 ' Convert mm to inches
+        Case Else
+            MsgBox "Invalid unit. Assuming meters.", vbExclamation
+            unitFactor = 0.001
+    End Select
+    
+    minGap = minGapMm * unitFactor
+    maxGap = maxGapMm * unitFactor
+    
+    ' Debug info
+    MsgBox "Converting " & minGapMm & "-" & maxGapMm & " mm to " & Format(minGap, "0.000000") & "-" & Format(maxGap, "0.000000") & " drawing units", vbInformation
     
     ' Validate input
     If minGap >= maxGap Then
@@ -41,7 +72,7 @@ Public Sub FixSmallGaps()
     Dim entityTypes As New Collection
     
     ' Collect all lines, arcs, and curves with their endpoints
-    MsgBox "Analyzing drawing elements...", vbInformation
+    ' MsgBox "Analyzing drawing elements...", vbInformation
     
     For i = 0 To modelSpace.Count - 1
         Set entity = modelSpace.Item(i)
@@ -65,7 +96,17 @@ Public Sub FixSmallGaps()
                 Dim pline As AcadLWPolyline
                 Set pline = entity
                 entities.Add pline
-                endpoints.Add Array(pline.StartPoint, pline.EndPoint)
+                ' Get all coordinates and extract first and last points
+                Dim coords As Variant
+                coords = pline.Coordinates
+                Dim startPt(2) As Double, endPt(2) As Double
+                ' First vertex (coordinates are stored as X1,Y1,X2,Y2,...)
+                startPt(0) = coords(0): startPt(1) = coords(1): startPt(2) = 0
+                ' Last vertex
+                Dim lastIndex As Integer
+                lastIndex = UBound(coords) - 1
+                endPt(0) = coords(lastIndex - 1): endPt(1) = coords(lastIndex): endPt(2) = 0
+                endpoints.Add Array(startPt, endPt)
                 entityTypes.Add "Polyline"
                 
             Case "AcDbSpline"
@@ -118,8 +159,13 @@ Public Sub FixSmallGaps()
                     Call ZoomToGap(point1, point2, distance * 10) ' Zoom with 10x buffer
                     
                     ' Ask user if they want to fix this gap
+                    ' Debug: show actual distance and converted distance
+                    Dim displayDistance As Double
+                    displayDistance = distance / unitFactor
                     userResponse = MsgBox("Gap found between " & entityTypes(i) & " and " & entityTypes(j) & vbCrLf & _
-                                        "Distance: " & Format(distance, "0.000") & " mm" & vbCrLf & _
+                                        "Distance: " & Format(displayDistance, "0.000") & " mm" & vbCrLf & _
+                                        "Raw distance: " & Format(distance, "0.000") & " drawing units" & vbCrLf & _
+                                        "Unit factor: " & unitFactor & vbCrLf & _
                                         "Do you want to fix this gap?", vbYesNoCancel + vbQuestion, "Fix Gap?")
                     
                     If userResponse = vbCancel Then
