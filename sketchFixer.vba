@@ -1,269 +1,618 @@
 Public Sub FixSmallGaps()
-	' Prompts user for min and max gap values, finds endpoints of lines/arcs/curves within that range,
-	' zooms in, asks user to fix, and moves endpoints to midpoint if confirmed.
-	Dim minGap As Double, maxGap As Double
-	Dim doc As AcadDocument
-	Dim ent As AcadEntity, ents As Variant
-	Dim i As Long, j As Long
-	Dim endpoints() As Variant, types() As String
-	Dim idx As Long, idx2 As Long
-	Dim pt1 As Variant, pt2 As Variant
-	Dim dist As Double, midPt(0 To 2) As Double
-	Dim resp As VbMsgBoxResult
+    ' Procedure to find and fix small gaps between drawing elements
+    ' Author: Created for BricsCAD VBA
+    ' Date: August 2025
     
-	Set doc = ThisDrawing
+    Dim doc As AcadDocument
+    Dim modelSpace As AcadModelSpace
+    Dim entity As AcadEntity
+    Dim i As Integer, j As Integer
+    Dim minGap As Double, maxGap As Double
+    Dim minGapMm As Double, maxGapMm As Double
+    Dim response As String
+    Dim userResponse As VbMsgBoxResult
+    Dim unitFactor As Double
+    Dim connectingLinesCount As Integer
     
-	' Ask user about unit handling preference
-	Dim unitChoice As VbMsgBoxResult
-	unitChoice = MsgBox("How should drawing units be handled?" & vbCrLf & vbCrLf & _
-	                   "YES = Assume drawing is in METERS" & vbCrLf & _
-	                   "NO = Try to detect units automatically" & vbCrLf & _
-	                   "CANCEL = Exit", vbYesNoCancel + vbQuestion, "Unit Selection")
-	
-	If unitChoice = vbCancel Then Exit Sub
+    ' Initialize counters
+    connectingLinesCount = 0
     
-	' Get drawing units to properly convert input values
-	Dim unitFactor As Double
-	Dim unitName As String
-	
-	If unitChoice = vbYes Then
-		' User chose to assume meters
-		unitFactor = 0.001 ' Convert mm input to meters
-		unitName = "Meters (user selected)"
-	Else
-		' User chose automatic detection
-		unitFactor = 0.001 ' Default to meters (convert mm input to meters)
-		unitName = "Meters (assumed)"
-		
-		' Try to determine units from drawing settings with multiple methods
-		On Error Resume Next
-		Dim insUnits As Integer
-		insUnits = -1 ' Initialize to invalid value
-		
-		' First try: Database InsUnits
-		If doc.Database Is Nothing = False Then
-			insUnits = doc.Database.InsUnits
-		End If
-		
-		' Second try: System variable INSUNITS
-		If insUnits = -1 Or insUnits = 0 Then
-			insUnits = doc.GetVariable("INSUNITS")
-		End If
-		
-		' Third try: System variable LUNITS (linear units)
-		If insUnits = -1 Or insUnits = 0 Then
-			Dim lUnits As Integer
-			lUnits = doc.GetVariable("LUNITS")
-			' LUNITS doesn't directly give us the unit type, but we can make educated guess
-			' If LUNITS is set, assume the drawing has been configured properly
-		End If
-		
-		On Error GoTo 0
-		
-		' Interpret the units
-		Select Case insUnits
-			Case 1 ' Inches
-				unitFactor = 25.4 ' Convert mm input to inches
-				unitName = "Inches"
-			Case 2 ' Feet
-				unitFactor = 304.8 ' Convert mm input to feet
-				unitName = "Feet"
-			Case 4 ' Millimeters
-				unitFactor = 1 ' No conversion needed
-				unitName = "Millimeters"
-			Case 5 ' Centimeters
-				unitFactor = 0.1 ' Convert mm input to cm
-				unitName = "Centimeters"
-			Case 6 ' Meters
-				unitFactor = 0.001 ' Convert mm input to meters
-				unitName = "Meters"
-			Case Else ' Unknown or unitless - assume meters
-				unitFactor = 0.001 ' Convert mm input to meters
-				unitName = "Meters (default)"
-		End Select
-	End If
+    ' Initialize document and model space
+    Set doc = ThisDrawing
+    Set modelSpace = doc.ModelSpace
     
-	minGap = CDbl(InputBox("Enter minimum gap value (mm):", "Fix Small Gaps", "0.001")) / unitFactor
-	maxGap = CDbl(InputBox("Enter maximum gap value (mm):", "Fix Small Gaps", "0.05")) / unitFactor
-	
-	' Debug: Show unit conversion info
-	If unitChoice = vbYes Then
-		MsgBox "Drawing units: " & unitName & vbCrLf & _
-		       "Unit factor: " & unitFactor & vbCrLf & _
-		       "Min gap in drawing units: " & minGap & vbCrLf & _
-		       "Max gap in drawing units: " & maxGap, vbInformation, "Debug Info"
-	Else
-		MsgBox "Drawing units: " & unitName & " (Code: " & insUnits & ")" & vbCrLf & _
-		       "Unit factor: " & unitFactor & vbCrLf & _
-		       "Min gap in drawing units: " & minGap & vbCrLf & _
-		       "Max gap in drawing units: " & maxGap, vbInformation, "Debug Info"
-	End If
+    ' Get gap values from user (in mm)
+    response = InputBox("Enter minimum gap value in mm:", "Minimum Gap", "0.001")
+    If response = "" Then Exit Sub
+    ' Handle decimal separator issues (replace comma with period if needed)
+    response = Replace(response, ",", ".")
+    minGapMm = Val(response)
+    ' MsgBox "Debug: minGapMm = " & minGapMm, vbInformation ' Debug line
     
-	' Collect all endpoints of lines, arcs, and polylines
-	ReDim endpoints(0 To 0)
-	ReDim types(0 To 0)
-	idx = 0
-	For Each ent In doc.ModelSpace
-		Select Case ent.ObjectName
-			Case "AcDbLine"
-				endpoints(idx) = ent.StartPoint
-				types(idx) = "L"
-				idx = idx + 1
-				ReDim Preserve endpoints(0 To idx)
-				ReDim Preserve types(0 To idx)
-				endpoints(idx) = ent.EndPoint
-				types(idx) = "L"
-				idx = idx + 1
-				ReDim Preserve endpoints(0 To idx)
-				ReDim Preserve types(0 To idx)
-			Case "AcDbArc"
-				endpoints(idx) = ent.StartPoint
-				types(idx) = "A"
-				idx = idx + 1
-				ReDim Preserve endpoints(0 To idx)
-				ReDim Preserve types(0 To idx)
-				endpoints(idx) = ent.EndPoint
-				types(idx) = "A"
-				idx = idx + 1
-				ReDim Preserve endpoints(0 To idx)
-				ReDim Preserve types(0 To idx)
-			Case "AcDbPolyline"
-				Dim v As Integer
-				On Error Resume Next
-				Dim nVerts As Integer
-				nVerts = ent.NumberOfVertices
-				If Err.Number <> 0 Then
-					' Not a supported polyline type, skip
-					Err.Clear
-				Else
-					For v = 0 To nVerts - 1
-						endpoints(idx) = ent.GetPointAt(v)
-						types(idx) = "P"
-						idx = idx + 1
-						ReDim Preserve endpoints(0 To idx)
-						ReDim Preserve types(0 To idx)
-					Next v
-				End If
-				On Error GoTo 0
-		End Select
-	Next ent
+    response = InputBox("Enter maximum gap value in mm:", "Maximum Gap", "0.05")
+    If response = "" Then Exit Sub
+    ' Handle decimal separator issues (replace comma with period if needed)
+    response = Replace(response, ",", ".")
+    maxGapMm = Val(response)
+    ' MsgBox "Debug: maxGapMm = " & maxGapMm, vbInformation ' Debug line
     
-	' Remove last empty slot
-	If idx > 0 Then
-		ReDim Preserve endpoints(0 To idx - 1)
-		ReDim Preserve types(0 To idx - 1)
-	End If
+    ' Convert from mm to drawing units
+    ' Ask user about drawing units to ensure correct conversion
+    Dim unitsResponse As String
+    unitsResponse = InputBox("What are your drawing units?" & vbCrLf & _
+                           "Enter 'mm' for millimeters" & vbCrLf & _
+                           "Enter 'm' for meters" & vbCrLf & _
+                           "Enter 'in' for inches", _
+                           "Drawing Units", "mm")
+    If unitsResponse = "" Then Exit Sub
     
-	' Search for pairs within gap range
-	For i = 0 To UBound(endpoints) - 1
-		For j = i + 1 To UBound(endpoints)
-			pt1 = Array(endpoints(i)(0), endpoints(i)(1), endpoints(i)(2))
-			pt2 = Array(endpoints(j)(0), endpoints(j)(1), endpoints(j)(2))
-			dist = Sqr((pt1(0) - pt2(0)) ^ 2 + (pt1(1) - pt2(1)) ^ 2 + (pt1(2) - pt2(2)) ^ 2)
-			' Debug: Show distance to verify units
-			Debug.Print "Distance found: " & Format(dist, "0.000000") & " drawing units (" & Format(dist * unitFactor, "0.000") & "mm), (min: " & Format(minGap * unitFactor, "0.000") & "mm, max: " & Format(maxGap * unitFactor, "0.000") & "mm)"
-			If dist >= minGap And dist <= maxGap Then
-				' Zoom to region
-				Call ZoomWindow(pt1, pt2)
-				resp = MsgBox("Gap of " & Format(dist * unitFactor, "0.000") & "mm found. Fix this gap?", vbYesNo + vbQuestion, "Fix Small Gaps")
-				If resp = vbYes Then
-					midPt(0) = (pt1(0) + pt2(0)) / 2
-					midPt(1) = (pt1(1) + pt2(1)) / 2
-					midPt(2) = (pt1(2) + pt2(2)) / 2
-					' Move both endpoints to midpoint
-					Call MoveEndpointTo(i, midPt, doc, endpoints, types)
-					Call MoveEndpointTo(j, midPt, doc, endpoints, types)
-				End If
-			End If
-		Next j
-	Next i
-	MsgBox "Done!"
+    Select Case LCase(unitsResponse)
+        Case "mm"
+            unitFactor = 1 ' No conversion needed
+        Case "m"
+            unitFactor = 0.001 ' Convert mm to meters
+        Case "in"
+            unitFactor = 1 / 25.4 ' Convert mm to inches
+        Case Else
+            MsgBox "Invalid unit. Assuming meters.", vbExclamation
+            unitFactor = 0.001
+    End Select
+    
+    minGap = minGapMm * unitFactor
+    maxGap = maxGapMm * unitFactor
+    
+    ' Debug info
+    MsgBox "Converting " & minGapMm & "-" & maxGapMm & " mm to " & Format(minGap, "0.000000") & "-" & Format(maxGap, "0.000000") & " drawing units", vbInformation
+    
+    ' Validate input
+    If minGap >= maxGap Then
+        MsgBox "Minimum gap must be less than maximum gap!", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Create collections to store line/arc/curve entities and their endpoints
+    Dim entities As New Collection
+    Dim endpoints As New Collection
+    Dim entityTypes As New Collection
+    
+    ' Collect all lines, arcs, and curves with their endpoints
+    ' MsgBox "Analyzing drawing elements...", vbInformation
+    
+    For i = 0 To modelSpace.Count - 1
+        Set entity = modelSpace.Item(i)
+        
+        Select Case entity.ObjectName
+            Case "AcDbLine"
+                Dim line As AcadLine
+                Set line = entity
+                entities.Add line
+                endpoints.Add Array(line.StartPoint, line.EndPoint)
+                entityTypes.Add "Line"
+                
+            Case "AcDbArc"
+                Dim arc As AcadArc
+                Set arc = entity
+                entities.Add arc
+                ' Calculate arc endpoints from center, radius, and angles with high precision
+                Dim arcStartPt(2) As Double, arcEndPt(2) As Double
+                arcStartPt(0) = arc.center(0) + arc.radius * Cos(arc.StartAngle)
+                arcStartPt(1) = arc.center(1) + arc.radius * Sin(arc.StartAngle)
+                arcStartPt(2) = arc.center(2)
+                arcEndPt(0) = arc.center(0) + arc.radius * Cos(arc.EndAngle)
+                arcEndPt(1) = arc.center(1) + arc.radius * Sin(arc.EndAngle)
+                arcEndPt(2) = arc.center(2)
+                endpoints.Add Array(arcStartPt, arcEndPt)
+                entityTypes.Add "Arc"
+                
+            Case "AcDbPolyline"
+                Dim pline As AcadLWPolyline
+                Set pline = entity
+                entities.Add pline
+                ' Get all coordinates and extract first and last points
+                Dim coords As Variant
+                coords = pline.Coordinates
+                Dim startPt(2) As Double, endPt(2) As Double
+                ' First vertex (coordinates are stored as X1,Y1,X2,Y2,...)
+                startPt(0) = coords(0): startPt(1) = coords(1): startPt(2) = 0
+                ' Last vertex
+                Dim lastIndex As Integer
+                lastIndex = UBound(coords) - 1
+                endPt(0) = coords(lastIndex - 1): endPt(1) = coords(lastIndex): endPt(2) = 0
+                endpoints.Add Array(startPt, endPt)
+                entityTypes.Add "Polyline"
+                
+            Case "AcDbSpline"
+                Dim spline As AcadSpline
+                Set spline = entity
+                entities.Add spline
+                endpoints.Add Array(spline.StartPoint, spline.EndPoint)
+                entityTypes.Add "Spline"
+        End Select
+    Next i
+    
+    If entities.Count = 0 Then
+        MsgBox "No lines, arcs, or curves found in the drawing.", vbInformation
+        Exit Sub
+    End If
+    
+    ' Ask user if they want to decide on each gap individually or fix all automatically
+    Dim fixModeResponse As VbMsgBoxResult
+    fixModeResponse = MsgBox("How would you like to handle gaps?" & vbCrLf & vbCrLf & _
+                           "Yes - Ask me about each gap individually" & vbCrLf & _
+                           "No - Fix all gaps automatically" & vbCrLf & _
+                           "Cancel - Exit without fixing", _
+                           vbYesNoCancel + vbQuestion, "Gap Fixing Mode")
+    
+    If fixModeResponse = vbCancel Then Exit Sub
+    
+    Dim autoFixMode As Boolean
+    autoFixMode = (fixModeResponse = vbNo)
+    
+    ' Search for gaps between endpoints
+    Dim gapsFound As Integer
+    gapsFound = 0
+    
+    ' Debug: Show how many entities were found
+    MsgBox "Found " & entities.Count & " entities to analyze for gaps.", vbInformation
+    
+    For i = 1 To entities.Count
+        For j = i + 1 To entities.Count
+            ' Get endpoints for both entities
+            Dim endpoints1 As Variant, endpoints2 As Variant
+            endpoints1 = endpoints(i)
+            endpoints2 = endpoints(j)
+            
+            ' Check all combinations of endpoints
+            Dim combinations(3) As Variant
+            combinations(0) = Array(endpoints1(0), endpoints2(0)) ' Start1 to Start2
+            combinations(1) = Array(endpoints1(0), endpoints2(1)) ' Start1 to End2
+            combinations(2) = Array(endpoints1(1), endpoints2(0)) ' End1 to Start2
+            combinations(3) = Array(endpoints1(1), endpoints2(1)) ' End1 to End2
+            
+            Dim k As Integer
+            For k = 0 To 3
+                Dim point1 As Variant, point2 As Variant
+                point1 = combinations(k)(0)
+                point2 = combinations(k)(1)
+                
+                ' Calculate distance between points
+                Dim distance As Double
+                distance = Sqr((point2(0) - point1(0)) ^ 2 + (point2(1) - point1(1)) ^ 2 + (point2(2) - point1(2)) ^ 2)
+                
+                ' Skip if points are the same (distance = 0) to avoid connecting endpoints of the same entity
+                If distance < 0.0000001 Then GoTo NextCombination
+                
+                ' Check if distance is within gap range
+                If distance >= minGap And distance <= maxGap Then
+                    gapsFound = gapsFound + 1
+                    
+                    ' Determine which endpoints are involved
+                    Dim endpointDesc As String
+                    Select Case k
+                        Case 0: endpointDesc = "Start to Start"
+                        Case 1: endpointDesc = "Start to End"
+                        Case 2: endpointDesc = "End to Start"
+                        Case 3: endpointDesc = "End to End"
+                    End Select
+                    
+                    Dim shouldFixGap As Boolean
+                    shouldFixGap = False
+                    
+                    ' Declare displayDistance once for both branches
+                    Dim displayDistance As Double
+                    displayDistance = distance / unitFactor
+                    
+                    If autoFixMode Then
+                        ' In automatic mode, fix all gaps
+                        shouldFixGap = True
+                        ' Still zoom to show the user what's being fixed
+                        Call ZoomToGap(point1, point2, distance * 10)
+                        ' Brief message about what's being fixed
+                        MsgBox "Fixing gap between " & entityTypes(i) & " and " & entityTypes(j) & vbCrLf & _
+                               "Connection: " & endpointDesc & vbCrLf & _
+                               "Distance: " & Format(displayDistance, "0.000") & " mm", _
+                               vbInformation, "Auto-Fixing Gap " & gapsFound
+                    Else
+                        ' In manual mode, ask user about each gap
+                        Call ZoomToGap(point1, point2, distance * 10) ' Zoom with 10x buffer
+                        
+                        ' Ask user if they want to fix this gap
+                        userResponse = MsgBox("Gap found between " & entityTypes(i) & " and " & entityTypes(j) & vbCrLf & _
+                                            "Connection: " & endpointDesc & vbCrLf & _
+                                            "Distance: " & Format(displayDistance, "0.000") & " mm" & vbCrLf & _
+                                            "Raw distance: " & Format(distance, "0.000000") & " drawing units" & vbCrLf & _
+                                            "Point 1: (" & Format(point1(0), "0.000") & ", " & Format(point1(1), "0.000") & ")" & vbCrLf & _
+                                            "Point 2: (" & Format(point2(0), "0.000") & ", " & Format(point2(1), "0.000") & ")" & vbCrLf & _
+                                            "Do you want to fix this gap?", vbYesNoCancel + vbQuestion, "Fix Gap?")
+                        
+                        If userResponse = vbCancel Then
+                            Exit Sub
+                        ElseIf userResponse = vbYes Then
+                            shouldFixGap = True
+                        End If
+                    End If
+                    
+                    ' Fix the gap if requested
+                    If shouldFixGap Then
+                        ' Try to fix by moving endpoints first
+                        Dim fixedByMoving As Boolean
+                        fixedByMoving = False
+                        
+                        ' Check if both entities can be modified by moving endpoints
+                        If CanMoveEndpoint(entities(i)) And CanMoveEndpoint(entities(j)) Then
+                            ' Calculate middle point
+                            Dim midPoint(2) As Double
+                            midPoint(0) = (point1(0) + point2(0)) / 2
+                            midPoint(1) = (point1(1) + point2(1)) / 2
+                            midPoint(2) = (point1(2) + point2(2)) / 2
+                            
+                            ' Try to move endpoints to middle point
+                            Dim moved1 As Boolean, moved2 As Boolean
+                            moved1 = MoveEndpoint(entities(i), point1, midPoint, k, True)
+                            moved2 = MoveEndpoint(entities(j), point2, midPoint, k, False)
+                            
+                            fixedByMoving = moved1 And moved2
+                            
+                            ' If both movements were successful, update the endpoints collections
+                            ' This is important for arcs whose endpoints may have changed position
+                            If fixedByMoving Then
+                                Call UpdateEntityEndpoints(entities(i), endpoints, i)
+                                Call UpdateEntityEndpoints(entities(j), endpoints, j)
+                            End If
+                        End If
+                        
+                        ' If couldn't fix by moving endpoints, create a connecting line
+                        If Not fixedByMoving Then
+                            Dim connectingLine As AcadLine
+                            Set connectingLine = modelSpace.AddLine(point1, point2)
+                            connectingLine.Color = acRed ' Make it red to highlight the fix
+                            connectingLine.Linetype = "CONTINUOUS" ' Ensure it's visible
+                            connectingLinesCount = connectingLinesCount + 1
+                            
+                            If Not autoFixMode Then
+                                MsgBox "Gap filled with connecting line (entities too complex to modify)!" & vbCrLf & _
+                                       "Line color: Red for easy identification", vbInformation
+                            End If
+                        Else
+                            If Not autoFixMode Then
+                                MsgBox "Gap fixed by moving endpoints!", vbInformation
+                            End If
+                        End If
+                        
+                        ' Regenerate the drawing
+                        doc.Regen acActiveViewport
+                    End If
+                End If
+NextCombination:
+            Next k
+        Next j
+    Next i
+    
+    ' Zoom extents when done
+    doc.Application.ZoomExtents
+    
+    If gapsFound = 0 Then
+        MsgBox "No gaps found within the specified range (" & minGapMm & " to " & maxGapMm & " mm).", vbInformation
+    Else
+        Dim fixSummary As String
+        fixSummary = "Gap analysis complete. " & gapsFound & " gaps were found"
+        If connectingLinesCount > 0 Then
+            fixSummary = fixSummary & vbCrLf & connectingLinesCount & " gaps were filled with red connecting lines"
+            fixSummary = fixSummary & vbCrLf & (gapsFound - connectingLinesCount) & " gaps were fixed by moving endpoints"
+        Else
+            fixSummary = fixSummary & vbCrLf & "All gaps were fixed by moving endpoints"
+        End If
+        
+        If autoFixMode Then
+            fixSummary = fixSummary & " automatically."
+        Else
+            fixSummary = fixSummary & "."
+        End If
+        
+        MsgBox fixSummary, vbInformation
+    End If
+    
 End Sub
 
-' Helper: Zooms to a window around two points
-Sub ZoomWindow(ByVal ptA, ByVal ptB)
-	Dim minX As Double, minY As Double, maxX As Double, maxY As Double
-	minX = Min(CDbl(ptA(0)), CDbl(ptB(0)))
-	minY = Min(CDbl(ptA(1)), CDbl(ptB(1)))
-	maxX = Max(CDbl(ptA(0)), CDbl(ptB(0)))
-	maxY = Max(CDbl(ptA(1)), CDbl(ptB(1)))
-	' Create zoom window with some padding around the gap
-	Dim padding As Double
-	padding = Max((maxX - minX), (maxY - minY)) * 2
-	If padding < 0.1 Then padding = 0.1 ' Minimum zoom area
-	
-	Dim pt1(0 To 2) As Double, pt2(0 To 2) As Double
-	pt1(0) = (minX + maxX) / 2 - padding / 2
-	pt1(1) = (minY + maxY) / 2 - padding / 2
-	pt1(2) = 0
-	pt2(0) = (minX + maxX) / 2 + padding / 2
-	pt2(1) = (minY + maxY) / 2 + padding / 2
-	pt2(2) = 0
-	
-	ThisDrawing.Application.ZoomWindow pt1, pt2
-End Sub
-
-' Helper: Returns the minimum of two values
-Function Min(a As Double, b As Double) As Double
-	If a < b Then
-		Min = a
-	Else
-		Min = b
-	End If
+Private Function CanMoveEndpoint(entity As AcadEntity) As Boolean
+    ' Check if an entity's endpoint can be safely moved
+    
+    Select Case entity.ObjectName
+        Case "AcDbLine"
+            CanMoveEndpoint = True ' Lines can always be moved
+        Case "AcDbArc"
+            CanMoveEndpoint = True ' Arcs can be modified (though complex, will check angle change in ModifyArcEndpoint)
+        Case "AcDbPolyline"
+            CanMoveEndpoint = True ' Polylines can be modified
+        Case "AcDbSpline"
+            CanMoveEndpoint = False ' Splines are too complex
+        Case "AcDbCircle"
+            CanMoveEndpoint = False ' Circles don't have endpoints
+        Case "AcDbEllipse"
+            CanMoveEndpoint = False ' Ellipses are complex
+        Case Else
+            CanMoveEndpoint = False ' Unknown entities default to false for safety
+    End Select
 End Function
 
-' Helper: Returns the maximum of two values
-
-Function Max(a As Double, b As Double) As Double
-	If a > b Then
-		Max = a
-	Else
-		Max = b
-	End If
-End Function
-
-' Helper: Move endpoint to new position
-Sub MoveEndpointTo(idx As Long, newPt As Variant, doc As AcadDocument, endpoints As Variant, ByRef types() As String)
-	Dim ent As AcadEntity
-	Dim k As Long, v As Integer
-	k = 0
-	For Each ent In doc.ModelSpace
-		Select Case ent.ObjectName
-			Case "AcDbLine"
-				If types(idx) = "L" Then
-					If IsEqual(ent.StartPoint, endpoints(idx)) Then
-						ent.StartPoint = newPt
-						Exit Sub
-					ElseIf IsEqual(ent.EndPoint, endpoints(idx)) Then
-						ent.EndPoint = newPt
-						Exit Sub
-					End If
-				End If
-			Case "AcDbArc"
-				If types(idx) = "A" Then
-					If IsEqual(ent.StartPoint, endpoints(idx)) Then
-						ent.StartPoint = newPt
-						Exit Sub
-					ElseIf IsEqual(ent.EndPoint, endpoints(idx)) Then
-						ent.EndPoint = newPt
-						Exit Sub
-					End If
-				End If
-			Case "AcDbPolyline"
-				If types(idx) = "P" Then
-					For v = 0 To ent.NumberOfVertices - 1
-						If IsEqual(ent.GetPointAt(v), endpoints(idx)) Then
-							ent.SetPointAt v, newPt
-							Exit Sub
-						End If
-					Next v
-				End If
-		End Select
-		k = k + 1
-	Next ent
+Private Sub ZoomToGap(point1 As Variant, point2 As Variant, bufferDistance As Double)
+    ' Zoom to the gap region with a buffer
+    Dim doc As AcadDocument
+    Set doc = ThisDrawing
+    
+    ' Calculate zoom window
+    Dim minX As Double, minY As Double, maxX As Double, maxY As Double
+    
+    minX = IIf(point1(0) < point2(0), point1(0), point2(0)) - bufferDistance
+    maxX = IIf(point1(0) > point2(0), point1(0), point2(0)) + bufferDistance
+    minY = IIf(point1(1) < point2(1), point1(1), point2(1)) - bufferDistance
+    maxY = IIf(point1(1) > point2(1), point1(1), point2(1)) + bufferDistance
+    
+    ' Create zoom window points
+    Dim lowerLeft(2) As Double, upperRight(2) As Double
+    lowerLeft(0) = minX: lowerLeft(1) = minY: lowerLeft(2) = 0
+    upperRight(0) = maxX: upperRight(1) = maxY: upperRight(2) = 0
+    
+    ' Zoom to window
+    doc.Application.ZoomWindow lowerLeft, upperRight
 End Sub
 
-' Helper: Checks if two points are equal (within tolerance)
-Function IsEqual(ptA As Variant, ptB As Variant, Optional tol As Double = 0.00001) As Boolean
-	IsEqual = (Abs(ptA(0) - ptB(0)) < tol) And (Abs(ptA(1) - ptB(1)) < tol) And (Abs(ptA(2) - ptB(2)) < tol)
+Private Function MoveEndpoint(entity As AcadEntity, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean) As Boolean
+    ' Move the endpoint of an entity to a new position
+    ' Returns True if successful, False if failed
+    
+    On Error GoTo ErrorHandler
+    
+    Select Case entity.ObjectName
+        Case "AcDbLine"
+            Dim line As AcadLine
+            Set line = entity
+            
+            ' Determine which endpoint to move by checking which is closer to oldPoint
+            Dim distToStart As Double, distToEnd As Double
+            distToStart = Sqr((oldPoint(0) - line.StartPoint(0)) ^ 2 + (oldPoint(1) - line.StartPoint(1)) ^ 2)
+            distToEnd = Sqr((oldPoint(0) - line.EndPoint(0)) ^ 2 + (oldPoint(1) - line.EndPoint(1)) ^ 2)
+            
+            If distToStart < distToEnd Then
+                line.StartPoint = newPoint
+            Else
+                line.EndPoint = newPoint
+            End If
+            MoveEndpoint = True
+            
+        Case "AcDbArc"
+            Dim arc As AcadArc
+            Set arc = entity
+            
+            ' For arcs, use the specialized function
+            MoveEndpoint = ModifyArcEndpoint(arc, oldPoint, newPoint, combinationIndex, isFirstEntity)
+            
+        Case "AcDbPolyline"
+            Dim pline As AcadLWPolyline
+            Set pline = entity
+            
+            ' Get current start and end points
+            Dim coords As Variant
+            coords = pline.Coordinates
+            Dim startPt(2) As Double, endPt(2) As Double
+            startPt(0) = coords(0): startPt(1) = coords(1): startPt(2) = 0
+            Dim lastIndex As Integer
+            lastIndex = UBound(coords) - 1
+            endPt(0) = coords(lastIndex - 1): endPt(1) = coords(lastIndex): endPt(2) = 0
+            
+            ' Determine which endpoint to move
+            Dim distToStartPL As Double, distToEndPL As Double
+            distToStartPL = Sqr((oldPoint(0) - startPt(0)) ^ 2 + (oldPoint(1) - startPt(1)) ^ 2)
+            distToEndPL = Sqr((oldPoint(0) - endPt(0)) ^ 2 + (oldPoint(1) - endPt(1)) ^ 2)
+            
+            If distToStartPL < distToEndPL Then
+                ' Move start point
+                Dim startCoord As Variant
+                startCoord = pline.Coordinate(0)
+                startCoord(0) = newPoint(0)
+                startCoord(1) = newPoint(1)
+                pline.Coordinate(0) = startCoord
+            Else
+                ' Move end point
+                Dim endCoord As Variant
+                Dim lastIdx As Integer
+                lastIdx = pline.NumberOfVertices - 1
+                endCoord = pline.Coordinate(lastIdx)
+                endCoord(0) = newPoint(0)
+                endCoord(1) = newPoint(1)
+                pline.Coordinate(lastIdx) = endCoord
+            End If
+            MoveEndpoint = True
+            
+        Case "AcDbSpline"
+            ' Splines are too complex to modify safely
+            MoveEndpoint = False
+            
+        Case Else
+            ' Unknown entity type
+            MoveEndpoint = False
+            
+    End Select
+    Exit Function
+    
+ErrorHandler:
+    MoveEndpoint = False
+End Function
+
+Private Function ModifyArcEndpoint(arc As AcadArc, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean) As Boolean
+    ' Modify arc endpoint by adjusting center and/or radius to place endpoint at exact target position
+    ' Returns True if successful, False if failed
+    
+    On Error GoTo ErrorHandler
+    
+    Dim startAngle As Double, endAngle As Double
+    Dim center As Variant, radius As Double
+    
+    center = arc.center
+    radius = arc.radius
+    startAngle = arc.StartAngle
+    endAngle = arc.EndAngle
+    
+    ' Calculate current endpoints
+    Dim currentStartPt(2) As Double, currentEndPt(2) As Double
+    currentStartPt(0) = center(0) + radius * Cos(startAngle)
+    currentStartPt(1) = center(1) + radius * Sin(startAngle)
+    currentStartPt(2) = center(2)
+    currentEndPt(0) = center(0) + radius * Cos(endAngle)
+    currentEndPt(1) = center(1) + radius * Sin(endAngle)
+    currentEndPt(2) = center(2)
+    
+    ' Calculate distances to determine which endpoint was the old point
+    Dim distToStart As Double, distToEnd As Double
+    distToStart = Sqr((oldPoint(0) - currentStartPt(0)) ^ 2 + (oldPoint(1) - currentStartPt(1)) ^ 2)
+    distToEnd = Sqr((oldPoint(0) - currentEndPt(0)) ^ 2 + (oldPoint(1) - currentEndPt(1)) ^ 2)
+    
+    ' Calculate distance from new point to current arc center
+    Dim distToCenter As Double
+    distToCenter = Sqr((newPoint(0) - center(0)) ^ 2 + (newPoint(1) - center(1)) ^ 2)
+    
+    ' Check if the new point is at a reasonable distance from center
+    ' If too far from the original radius, adjust approach
+    Dim radiusChange As Double
+    radiusChange = Abs(distToCenter - radius)
+    
+    If distToStart < distToEnd Then
+        ' Modifying start point
+        If radiusChange / radius < 0.1 Then ' Less than 10% radius change
+            ' Method 1: Adjust both radius and angle to place start point exactly at new position
+            Dim newRadius As Double
+            newRadius = distToCenter
+            Dim newStartAngle As Double
+            newStartAngle = Atan2(newPoint(1) - center(1), newPoint(0) - center(0))
+            
+            ' Update arc properties
+            arc.radius = newRadius
+            arc.StartAngle = newStartAngle
+            
+            ModifyArcEndpoint = True
+        Else
+            ' Method 2: Move center to maintain radius and place endpoint exactly
+            Dim newCenter(2) As Double
+            Dim directionAngle As Double
+            directionAngle = Atan2(newPoint(1) - center(1), newPoint(0) - center(0))
+            
+            ' Calculate new center position to place start point exactly at new position
+            newCenter(0) = newPoint(0) - radius * Cos(startAngle)
+            newCenter(1) = newPoint(1) - radius * Sin(startAngle)
+            newCenter(2) = center(2)
+            
+            arc.center = newCenter
+            ModifyArcEndpoint = True
+        End If
+    Else
+        ' Modifying end point
+        If radiusChange / radius < 0.1 Then ' Less than 10% radius change
+            ' Method 1: Adjust both radius and angle to place end point exactly at new position
+            Dim newRadiusEnd As Double
+            newRadiusEnd = distToCenter
+            Dim newEndAngle As Double
+            newEndAngle = Atan2(newPoint(1) - center(1), newPoint(0) - center(0))
+            
+            ' Update arc properties
+            arc.radius = newRadiusEnd
+            arc.EndAngle = newEndAngle
+            
+            ModifyArcEndpoint = True
+        Else
+            ' Method 2: Move center to maintain radius and place endpoint exactly
+            Dim newCenterEnd(2) As Double
+            
+            ' Calculate new center position to place end point exactly at new position
+            newCenterEnd(0) = newPoint(0) - radius * Cos(endAngle)
+            newCenterEnd(1) = newPoint(1) - radius * Sin(endAngle)
+            newCenterEnd(2) = center(2)
+            
+            arc.center = newCenterEnd
+            ModifyArcEndpoint = True
+        End If
+    End If
+    Exit Function
+    
+ErrorHandler:
+    ModifyArcEndpoint = False
+End Function
+
+Private Sub UpdateEntityEndpoints(entity As AcadEntity, endpoints As Collection, entityIndex As Integer)
+    ' Update the endpoint information in the collection after entity modification
+    ' This is crucial for arcs whose endpoints may change after center/radius adjustments
+    ' Instead of trying to modify collection items directly, we'll recreate the endpoints array
+    
+    Dim updatedEndpoints As Variant
+    
+    Select Case entity.ObjectName
+        Case "AcDbLine"
+            Dim line As AcadLine
+            Set line = entity
+            updatedEndpoints = Array(line.StartPoint, line.EndPoint)
+            
+        Case "AcDbArc"
+            Dim arc As AcadArc
+            Set arc = entity
+            ' Recalculate arc endpoints with current center, radius, and angles
+            Dim arcStartPt(2) As Double, arcEndPt(2) As Double
+            arcStartPt(0) = arc.center(0) + arc.radius * Cos(arc.StartAngle)
+            arcStartPt(1) = arc.center(1) + arc.radius * Sin(arc.StartAngle)
+            arcStartPt(2) = arc.center(2)
+            arcEndPt(0) = arc.center(0) + arc.radius * Cos(arc.EndAngle)
+            arcEndPt(1) = arc.center(1) + arc.radius * Sin(arc.EndAngle)
+            arcEndPt(2) = arc.center(2)
+            updatedEndpoints = Array(arcStartPt, arcEndPt)
+            
+        Case "AcDbPolyline"
+            Dim pline As AcadLWPolyline
+            Set pline = entity
+            ' Get updated coordinates
+            Dim coords As Variant
+            coords = pline.Coordinates
+            Dim startPt(2) As Double, endPt(2) As Double
+            startPt(0) = coords(0): startPt(1) = coords(1): startPt(2) = 0
+            Dim lastIndex As Integer
+            lastIndex = UBound(coords) - 1
+            endPt(0) = coords(lastIndex - 1): endPt(1) = coords(lastIndex): endPt(2) = 0
+            updatedEndpoints = Array(startPt, endPt)
+            
+        Case "AcDbSpline"
+            Dim spline As AcadSpline
+            Set spline = entity
+            updatedEndpoints = Array(spline.StartPoint, spline.EndPoint)
+    End Select
+    
+    ' Replace the item in the collection by removing and adding at the same position
+    ' First, check if we need to preserve order
+    If entityIndex <= endpoints.Count Then
+        endpoints.Remove entityIndex
+        If entityIndex = 1 Then
+            endpoints.Add updatedEndpoints, , 1
+        ElseIf entityIndex > endpoints.Count Then
+            endpoints.Add updatedEndpoints
+        Else
+            endpoints.Add updatedEndpoints, , entityIndex
+        End If
+    End If
+End Sub
+
+' VBA does not have Atan2, so we define our own
+Private Function Atan2(y As Double, x As Double) As Double
+    If x > 0 Then
+        Atan2 = Atn(y / x)
+    ElseIf x < 0 Then
+        If y >= 0 Then
+            Atan2 = Atn(y / x) + 3.14159265358979
+        Else
+            Atan2 = Atn(y / x) - 3.14159265358979
+        End If
+    Else ' x = 0
+        If y > 0 Then
+            Atan2 = 3.14159265358979 / 2
+        ElseIf y < 0 Then
+            Atan2 = -3.14159265358979 / 2
+        Else
+            Atan2 = 0 ' undefined, return 0
+        End If
+    End If
 End Function

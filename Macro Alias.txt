@@ -1,0 +1,2 @@
+Alias: 		Q  (Sugestão)
+Comando: 	(COMMAND "_-VBARUN" "PERFICAD_01.M_0.SHOWFORMPERFISUL01")
