@@ -12,6 +12,10 @@ Public Sub FixSmallGaps()
     Dim response As String
     Dim userResponse As VbMsgBoxResult
     Dim unitFactor As Double
+    Dim connectingLinesCount As Integer
+    
+    ' Initialize counters
+    connectingLinesCount = 0
     
     ' Initialize document and model space
     Set doc = ThisDrawing
@@ -230,22 +234,46 @@ Public Sub FixSmallGaps()
                     
                     ' Fix the gap if requested
                     If shouldFixGap Then
-                        ' Calculate middle point
-                        Dim midPoint(2) As Double
-                        midPoint(0) = (point1(0) + point2(0)) / 2
-                        midPoint(1) = (point1(1) + point2(1)) / 2
-                        midPoint(2) = (point1(2) + point2(2)) / 2
+                        ' Try to fix by moving endpoints first
+                        Dim fixedByMoving As Boolean
+                        fixedByMoving = False
                         
-                        ' Move endpoints to middle point
-                        Call MoveEndpoint(entities(i), point1, midPoint, k, True)
-                        Call MoveEndpoint(entities(j), point2, midPoint, k, False)
+                        ' Check if both entities can be modified by moving endpoints
+                        If CanMoveEndpoint(entities(i)) And CanMoveEndpoint(entities(j)) Then
+                            ' Calculate middle point
+                            Dim midPoint(2) As Double
+                            midPoint(0) = (point1(0) + point2(0)) / 2
+                            midPoint(1) = (point1(1) + point2(1)) / 2
+                            midPoint(2) = (point1(2) + point2(2)) / 2
+                            
+                            ' Try to move endpoints to middle point
+                            Dim moved1 As Boolean, moved2 As Boolean
+                            moved1 = MoveEndpoint(entities(i), point1, midPoint, k, True)
+                            moved2 = MoveEndpoint(entities(j), point2, midPoint, k, False)
+                            
+                            fixedByMoving = moved1 And moved2
+                        End If
+                        
+                        ' If couldn't fix by moving endpoints, create a connecting line
+                        If Not fixedByMoving Then
+                            Dim connectingLine As AcadLine
+                            Set connectingLine = modelSpace.AddLine(point1, point2)
+                            connectingLine.Color = acRed ' Make it red to highlight the fix
+                            connectingLine.Linetype = "CONTINUOUS" ' Ensure it's visible
+                            connectingLinesCount = connectingLinesCount + 1
+                            
+                            If Not autoFixMode Then
+                                MsgBox "Gap filled with connecting line (entities too complex to modify)!" & vbCrLf & _
+                                       "Line color: Red for easy identification", vbInformation
+                            End If
+                        Else
+                            If Not autoFixMode Then
+                                MsgBox "Gap fixed by moving endpoints!", vbInformation
+                            End If
+                        End If
                         
                         ' Regenerate the drawing
                         doc.Regen acActiveViewport
-                        
-                        If Not autoFixMode Then
-                            MsgBox "Gap fixed successfully!", vbInformation
-                        End If
                     End If
                 End If
 NextCombination:
@@ -259,14 +287,46 @@ NextCombination:
     If gapsFound = 0 Then
         MsgBox "No gaps found within the specified range (" & minGapMm & " to " & maxGapMm & " mm).", vbInformation
     Else
-        If autoFixMode Then
-            MsgBox "Gap analysis complete. " & gapsFound & " gaps were found and fixed automatically.", vbInformation
+        Dim fixSummary As String
+        fixSummary = "Gap analysis complete. " & gapsFound & " gaps were found"
+        If connectingLinesCount > 0 Then
+            fixSummary = fixSummary & vbCrLf & connectingLinesCount & " gaps were filled with red connecting lines"
+            fixSummary = fixSummary & vbCrLf & (gapsFound - connectingLinesCount) & " gaps were fixed by moving endpoints"
         Else
-            MsgBox "Gap analysis complete. " & gapsFound & " gaps were found.", vbInformation
+            fixSummary = fixSummary & vbCrLf & "All gaps were fixed by moving endpoints"
         End If
+        
+        If autoFixMode Then
+            fixSummary = fixSummary & " automatically."
+        Else
+            fixSummary = fixSummary & "."
+        End If
+        
+        MsgBox fixSummary, vbInformation
     End If
     
 End Sub
+
+Private Function CanMoveEndpoint(entity As AcadEntity) As Boolean
+    ' Check if an entity's endpoint can be safely moved
+    
+    Select Case entity.ObjectName
+        Case "AcDbLine"
+            CanMoveEndpoint = True ' Lines can always be moved
+        Case "AcDbArc"
+            CanMoveEndpoint = True ' Arcs can be modified (though complex, will check angle change in ModifyArcEndpoint)
+        Case "AcDbPolyline"
+            CanMoveEndpoint = True ' Polylines can be modified
+        Case "AcDbSpline"
+            CanMoveEndpoint = False ' Splines are too complex
+        Case "AcDbCircle"
+            CanMoveEndpoint = False ' Circles don't have endpoints
+        Case "AcDbEllipse"
+            CanMoveEndpoint = False ' Ellipses are complex
+        Case Else
+            CanMoveEndpoint = False ' Unknown entities default to false for safety
+    End Select
+End Function
 
 Private Sub ZoomToGap(point1 As Variant, point2 As Variant, bufferDistance As Double)
     ' Zoom to the gap region with a buffer
@@ -290,8 +350,11 @@ Private Sub ZoomToGap(point1 As Variant, point2 As Variant, bufferDistance As Do
     doc.Application.ZoomWindow lowerLeft, upperRight
 End Sub
 
-Private Sub MoveEndpoint(entity As AcadEntity, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean)
+Private Function MoveEndpoint(entity As AcadEntity, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean) As Boolean
     ' Move the endpoint of an entity to a new position
+    ' Returns True if successful, False if failed
+    
+    On Error GoTo ErrorHandler
     
     Select Case entity.ObjectName
         Case "AcDbLine"
@@ -308,13 +371,14 @@ Private Sub MoveEndpoint(entity As AcadEntity, oldPoint As Variant, newPoint As 
             Else
                 line.EndPoint = newPoint
             End If
+            MoveEndpoint = True
             
         Case "AcDbArc"
             Dim arc As AcadArc
             Set arc = entity
             
             ' For arcs, use the specialized function
-            Call ModifyArcEndpoint(arc, oldPoint, newPoint, combinationIndex, isFirstEntity)
+            MoveEndpoint = ModifyArcEndpoint(arc, oldPoint, newPoint, combinationIndex, isFirstEntity)
             
         Case "AcDbPolyline"
             Dim pline As AcadLWPolyline
@@ -351,18 +415,29 @@ Private Sub MoveEndpoint(entity As AcadEntity, oldPoint As Variant, newPoint As 
                 endCoord(1) = newPoint(1)
                 pline.Coordinate(lastIdx) = endCoord
             End If
+            MoveEndpoint = True
             
         Case "AcDbSpline"
-            ' Splines are more complex to modify
-            ' For now, we'll skip spline modification or implement a simplified approach
-            MsgBox "Spline endpoint modification not implemented in this version.", vbInformation
+            ' Splines are too complex to modify safely
+            MoveEndpoint = False
+            
+        Case Else
+            ' Unknown entity type
+            MoveEndpoint = False
             
     End Select
-End Sub
+    Exit Function
+    
+ErrorHandler:
+    MoveEndpoint = False
+End Function
 
-Private Sub ModifyArcEndpoint(arc As AcadArc, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean)
+Private Function ModifyArcEndpoint(arc As AcadArc, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean) As Boolean
     ' Modify arc endpoint - this is complex as it may require changing center, radius, or angles
     ' For this implementation, we'll adjust the angle to move the endpoint closer to the target
+    ' Returns True if successful, False if failed
+    
+    On Error GoTo ErrorHandler
     
     Dim startAngle As Double, endAngle As Double
     Dim center As Variant, radius As Double
@@ -393,15 +468,35 @@ Private Sub ModifyArcEndpoint(arc As AcadArc, oldPoint As Variant, newPoint As V
     distToStart = Sqr((oldPoint(0) - currentStartPt(0)) ^ 2 + (oldPoint(1) - currentStartPt(1)) ^ 2)
     distToEnd = Sqr((oldPoint(0) - currentEndPt(0)) ^ 2 + (oldPoint(1) - currentEndPt(1)) ^ 2)
     
-    ' Modify the closer endpoint
+    ' Check if the new angle would result in a valid arc
+    ' Avoid modifying arcs where the change would be too drastic
+    Dim angleChange As Double
     If distToStart < distToEnd Then
-        ' Modify start angle
-        arc.StartAngle = newAngle
+        ' Modifying start angle
+        angleChange = Abs(newAngle - startAngle)
+        If angleChange > 3.14159265358979 Then angleChange = 2 * 3.14159265358979 - angleChange
+        If angleChange < 1.57079632679489 Then ' Less than 90 degrees change
+            arc.StartAngle = newAngle
+            ModifyArcEndpoint = True
+        Else
+            ModifyArcEndpoint = False ' Change too drastic
+        End If
     Else
-        ' Modify end angle
-        arc.EndAngle = newAngle
+        ' Modifying end angle
+        angleChange = Abs(newAngle - endAngle)
+        If angleChange > 3.14159265358979 Then angleChange = 2 * 3.14159265358979 - angleChange
+        If angleChange < 1.57079632679489 Then ' Less than 90 degrees change
+            arc.EndAngle = newAngle
+            ModifyArcEndpoint = True
+        Else
+            ModifyArcEndpoint = False ' Change too drastic
+        End If
     End If
-End Sub
+    Exit Function
+    
+ErrorHandler:
+    ModifyArcEndpoint = False
+End Function
 
 ' VBA does not have Atan2, so we define our own
 Private Function Atan2(y As Double, x As Double) As Double
