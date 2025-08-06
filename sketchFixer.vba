@@ -22,7 +22,7 @@ Public Sub FixSmallGaps()
     Set modelSpace = doc.ModelSpace
     
     ' Get gap values from user (in mm)
-    response = InputBox("Enter minimum gap value in mm:", "Minimum Gap", "0.001")
+    response = InputBox("Enter minimum gap value in mm:", "Minimum Gap", "0.00001")
     If response = "" Then Exit Sub
     ' Handle decimal separator issues (replace comma with period if needed)
     response = Replace(response, ",", ".")
