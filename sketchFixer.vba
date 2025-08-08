@@ -152,8 +152,10 @@ Public Sub FixSmallGaps()
     Dim gapsFound As Integer
     gapsFound = 0
     
-    ' Debug: Show how many entities were found
-    MsgBox "Found " & entities.Count & " entities to analyze for gaps.", vbInformation
+    ' Debug/count info (suppress in auto-fix mode as per new requirement)
+    If Not autoFixMode Then
+        MsgBox "Found " & entities.Count & " entities to analyze for gaps.", vbInformation
+    End If
     
     For i = 1 To entities.Count
         For j = i + 1 To entities.Count
@@ -203,15 +205,10 @@ Public Sub FixSmallGaps()
                     displayDistance = distance / unitFactor
                     
                     If autoFixMode Then
-                        ' In automatic mode, fix all gaps
+                        ' In automatic mode, fix all gaps silently (no per-gap MsgBoxes)
                         shouldFixGap = True
-                        ' Still zoom to show the user what's being fixed
+                        ' Optional: still zoom to the gap for visual feedback; comment out next line to disable zoom during auto mode
                         Call ZoomToGap(point1, point2, distance * 10)
-                        ' Brief message about what's being fixed
-                        MsgBox "Fixing gap between " & entityTypes(i) & " and " & entityTypes(j) & vbCrLf & _
-                               "Connection: " & endpointDesc & vbCrLf & _
-                               "Distance: " & Format(displayDistance, "0.000") & " mm", _
-                               vbInformation, "Auto-Fixing Gap " & gapsFound
                     Else
                         ' In manual mode, ask user about each gap
                         Call ZoomToGap(point1, point2, distance * 10) ' Zoom with 10x buffer
@@ -246,19 +243,88 @@ Public Sub FixSmallGaps()
                             midPoint(1) = (point1(1) + point2(1)) / 2
                             midPoint(2) = (point1(2) + point2(2)) / 2
                             
-                            ' Try to move endpoints to middle point
-                            Dim moved1 As Boolean, moved2 As Boolean
-                            moved1 = MoveEndpoint(entities(i), point1, midPoint, k, True)
-                            moved2 = MoveEndpoint(entities(j), point2, midPoint, k, False)
-                            
-                            fixedByMoving = moved1 And moved2
-                            
-                            ' If both movements were successful, update the endpoints collections
-                            ' This is important for arcs whose endpoints may have changed position
-                            If fixedByMoving Then
-                                Call UpdateEntityEndpoints(entities(i), endpoints, i)
-                                Call UpdateEntityEndpoints(entities(j), endpoints, j)
+                        ' Try to move endpoints to middle point
+                        Dim moved1 As Boolean, moved2 As Boolean
+                        Dim newSpline1 As AcadSpline, newSpline2 As AcadSpline
+                        Set newSpline1 = Nothing
+                        Set newSpline2 = Nothing
+                        
+                        ' Handle potential arc-to-spline conversion for first entity
+                        If entities(i).ObjectName = "AcDbArc" Then
+                            moved1 = MoveEndpointWithConversion(entities(i), point1, midPoint, k, True, newSpline1)
+                            If moved1 And Not newSpline1 Is Nothing Then
+                                ' Note: Collection updates will be handled after both conversions
+                                ' to avoid index invalidation during the loop
                             End If
+                        Else
+                            moved1 = MoveEndpoint(entities(i), point1, midPoint, k, True)
+                        End If
+                        
+                        ' Handle potential arc-to-spline conversion for second entity
+                        If entities(j).ObjectName = "AcDbArc" Then
+                            moved2 = MoveEndpointWithConversion(entities(j), point2, midPoint, k, False, newSpline2)
+                            If moved2 And Not newSpline2 Is Nothing Then
+                                ' Note: Collection updates will be handled after both conversions
+                                ' to avoid index invalidation during the loop
+                            End If
+                        Else
+                            moved2 = MoveEndpoint(entities(j), point2, midPoint, k, False)
+                        End If
+                        
+                        ' Now safely update collections after both conversions are complete
+                        ' Handle first entity replacement (do j first since j > i, to preserve i's index)
+                        If moved2 And Not newSpline2 Is Nothing Then
+                            On Error Resume Next
+                            Dim spline2Start As Variant, spline2End As Variant
+                            spline2Start = newSpline2.StartPoint
+                            spline2End = newSpline2.EndPoint
+                            On Error GoTo 0
+                            
+                            If Not IsEmpty(spline2Start) And Not IsEmpty(spline2End) Then
+                                entities.Remove j
+                                entityTypes.Remove j
+                                endpoints.Remove j
+                                ' Add back at the same logical position, but safely handle bounds
+                                If j <= entities.Count Then
+                                    entities.Add newSpline2, , j
+                                    entityTypes.Add "Spline", , j
+                                    endpoints.Add Array(spline2Start, spline2End), , j
+                                Else
+                                    ' Add at end if original position is now out of bounds
+                                    entities.Add newSpline2
+                                    entityTypes.Add "Spline"
+                                    endpoints.Add Array(spline2Start, spline2End)
+                                End If
+                            End If
+                        End If
+                        
+                        ' Handle second entity replacement (i is still valid since we processed j first)
+                        If moved1 And Not newSpline1 Is Nothing Then
+                            On Error Resume Next
+                            Dim spline1Start As Variant, spline1End As Variant
+                            spline1Start = newSpline1.StartPoint
+                            spline1End = newSpline1.EndPoint
+                            On Error GoTo 0
+                            
+                            If Not IsEmpty(spline1Start) And Not IsEmpty(spline1End) Then
+                                entities.Remove i
+                                entityTypes.Remove i
+                                endpoints.Remove i
+                                ' Add back at the same logical position, but safely handle bounds
+                                If i <= entities.Count Then
+                                    entities.Add newSpline1, , i
+                                    entityTypes.Add "Spline", , i
+                                    endpoints.Add Array(spline1Start, spline1End), , i
+                                Else
+                                    ' Add at end if original position is now out of bounds
+                                    entities.Add newSpline1
+                                    entityTypes.Add "Spline"
+                                    endpoints.Add Array(spline1Start, spline1End)
+                                End If
+                            End If
+                        End If
+                        
+                        fixedByMoving = moved1 And moved2
                         End If
                         
                         ' If couldn't fix by moving endpoints, create a connecting line
@@ -357,6 +423,27 @@ Private Sub ZoomToGap(point1 As Variant, point2 As Variant, bufferDistance As Do
     doc.Application.ZoomWindow lowerLeft, upperRight
 End Sub
 
+Private Function MoveEndpointWithConversion(entity As AcadEntity, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean, ByRef newSpline As AcadSpline) As Boolean
+    ' Move endpoint with potential arc-to-spline conversion
+    ' Returns the new spline via ByRef if conversion occurs
+    
+    On Error GoTo ErrorHandler
+    
+    If entity.ObjectName = "AcDbArc" Then
+        Dim arc As AcadArc
+        Set arc = entity
+        MoveEndpointWithConversion = ModifyArcEndpoint(arc, oldPoint, newPoint, combinationIndex, isFirstEntity, newSpline)
+    Else
+        ' For non-arc entities, use regular move endpoint
+        MoveEndpointWithConversion = MoveEndpoint(entity, oldPoint, newPoint, combinationIndex, isFirstEntity)
+    End If
+    
+    Exit Function
+    
+ErrorHandler:
+    MoveEndpointWithConversion = False
+End Function
+
 Private Function MoveEndpoint(entity As AcadEntity, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean) As Boolean
     ' Move the endpoint of an entity to a new position
     ' Returns True if successful, False if failed
@@ -381,11 +468,9 @@ Private Function MoveEndpoint(entity As AcadEntity, oldPoint As Variant, newPoin
             MoveEndpoint = True
             
         Case "AcDbArc"
-            Dim arc As AcadArc
-            Set arc = entity
-            
-            ' For arcs, use the specialized function
-            MoveEndpoint = ModifyArcEndpoint(arc, oldPoint, newPoint, combinationIndex, isFirstEntity)
+            ' Arcs cannot be modified directly in this function
+            ' Return False to use connecting line instead
+            MoveEndpoint = False
             
         Case "AcDbPolyline"
             Dim pline As AcadLWPolyline
@@ -439,15 +524,47 @@ ErrorHandler:
     MoveEndpoint = False
 End Function
 
-Private Function ModifyArcEndpoint(arc As AcadArc, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean) As Boolean
-    ' Modify arc endpoint by adjusting center and/or radius to place endpoint at exact target position
-    ' Returns True if successful, False if failed
+Private Function ModifyArcEndpoint(arc As AcadArc, oldPoint As Variant, newPoint As Variant, combinationIndex As Integer, isFirstEntity As Boolean, ByRef newSpline As AcadSpline) As Boolean
+    ' Convert arc to spline and modify endpoint for more reliable gap fixing
+    ' This approach provides better flexibility than trying to modify arc geometry
+    ' Returns the new spline via ByRef parameter if conversion occurs
     
     On Error GoTo ErrorHandler
     
-    Dim startAngle As Double, endAngle As Double
-    Dim center As Variant, radius As Double
+    ' Calculate gap size to determine if we should modify the arc
+    Dim gapSize As Double
+    gapSize = Sqr((newPoint(0) - oldPoint(0)) ^ 2 + (newPoint(1) - oldPoint(1)) ^ 2)
     
+    ' Only modify arc for reasonable gaps (less than 50% of radius)
+    If gapSize >= arc.radius * 0.5 Then
+        ' Large gap: don't modify arc, use connecting line instead
+        ModifyArcEndpoint = False
+        Exit Function
+    End If
+    
+    ' Convert arc to spline and modify the endpoint
+    ModifyArcEndpoint = ConvertArcToSplineAndModify(arc, oldPoint, newPoint, newSpline)
+    
+    Exit Function
+    
+ErrorHandler:
+    ModifyArcEndpoint = False
+End Function
+
+Private Function ConvertArcToSplineAndModify(arc As AcadArc, oldPoint As Variant, newPoint As Variant, ByRef newSpline As AcadSpline) As Boolean
+    ' Convert arc to spline, modify endpoint, and replace the original arc
+    ' Returns the new spline via ByRef parameter
+    
+    On Error GoTo ErrorHandler
+    
+    Dim doc As AcadDocument
+    Dim modelSpace As AcadModelSpace
+    Set doc = ThisDrawing
+    Set modelSpace = doc.ModelSpace
+    
+    ' Get arc properties
+    Dim center As Variant, radius As Double
+    Dim startAngle As Double, endAngle As Double
     center = arc.center
     radius = arc.radius
     startAngle = arc.StartAngle
@@ -462,79 +579,87 @@ Private Function ModifyArcEndpoint(arc As AcadArc, oldPoint As Variant, newPoint
     currentEndPt(1) = center(1) + radius * Sin(endAngle)
     currentEndPt(2) = center(2)
     
-    ' Calculate distances to determine which endpoint was the old point
+    ' Determine which endpoint to modify
     Dim distToStart As Double, distToEnd As Double
     distToStart = Sqr((oldPoint(0) - currentStartPt(0)) ^ 2 + (oldPoint(1) - currentStartPt(1)) ^ 2)
     distToEnd = Sqr((oldPoint(0) - currentEndPt(0)) ^ 2 + (oldPoint(1) - currentEndPt(1)) ^ 2)
     
-    ' Calculate distance from new point to current arc center
-    Dim distToCenter As Double
-    distToCenter = Sqr((newPoint(0) - center(0)) ^ 2 + (newPoint(1) - center(1)) ^ 2)
+    ' Generate control points for the spline based on the arc
+    Dim numPoints As Integer
+    numPoints = 7 ' Use 7 points for smooth curve approximation
     
-    ' Check if the new point is at a reasonable distance from center
-    ' If too far from the original radius, adjust approach
-    Dim radiusChange As Double
-    radiusChange = Abs(distToCenter - radius)
+    Dim splinePoints() As Double
+    ReDim splinePoints((numPoints * 3) - 1) ' 3 coordinates per point
     
-    If distToStart < distToEnd Then
-        ' Modifying start point
-        If radiusChange / radius < 0.1 Then ' Less than 10% radius change
-            ' Method 1: Adjust both radius and angle to place start point exactly at new position
-            Dim newRadius As Double
-            newRadius = distToCenter
-            Dim newStartAngle As Double
-            newStartAngle = Atan2(newPoint(1) - center(1), newPoint(0) - center(0))
-            
-            ' Update arc properties
-            arc.radius = newRadius
-            arc.StartAngle = newStartAngle
-            
-            ModifyArcEndpoint = True
-        Else
-            ' Method 2: Move center to maintain radius and place endpoint exactly
-            Dim newCenter(2) As Double
-            Dim directionAngle As Double
-            directionAngle = Atan2(newPoint(1) - center(1), newPoint(0) - center(0))
-            
-            ' Calculate new center position to place start point exactly at new position
-            newCenter(0) = newPoint(0) - radius * Cos(startAngle)
-            newCenter(1) = newPoint(1) - radius * Sin(startAngle)
-            newCenter(2) = center(2)
-            
-            arc.center = newCenter
-            ModifyArcEndpoint = True
-        End If
-    Else
-        ' Modifying end point
-        If radiusChange / radius < 0.1 Then ' Less than 10% radius change
-            ' Method 1: Adjust both radius and angle to place end point exactly at new position
-            Dim newRadiusEnd As Double
-            newRadiusEnd = distToCenter
-            Dim newEndAngle As Double
-            newEndAngle = Atan2(newPoint(1) - center(1), newPoint(0) - center(0))
-            
-            ' Update arc properties
-            arc.radius = newRadiusEnd
-            arc.EndAngle = newEndAngle
-            
-            ModifyArcEndpoint = True
-        Else
-            ' Method 2: Move center to maintain radius and place endpoint exactly
-            Dim newCenterEnd(2) As Double
-            
-            ' Calculate new center position to place end point exactly at new position
-            newCenterEnd(0) = newPoint(0) - radius * Cos(endAngle)
-            newCenterEnd(1) = newPoint(1) - radius * Sin(endAngle)
-            newCenterEnd(2) = center(2)
-            
-            arc.center = newCenterEnd
-            ModifyArcEndpoint = True
-        End If
+    ' Calculate the angular span of the arc
+    Dim totalAngle As Double
+    totalAngle = endAngle - startAngle
+    
+    ' Handle angle wrapping for arcs that cross 0 degrees
+    If totalAngle < 0 Then
+        totalAngle = totalAngle + 2 * 3.14159265358979 ' Add 2*PI
     End If
+    
+    ' Generate points along the arc curve
+    Dim i As Integer
+    For i = 0 To numPoints - 1
+        Dim currentAngle As Double
+        If i = 0 Then
+            ' First point - use modified start or original start
+            If distToStart < distToEnd Then
+                ' Modifying start point
+                splinePoints(i * 3) = newPoint(0)
+                splinePoints(i * 3 + 1) = newPoint(1)
+                splinePoints(i * 3 + 2) = newPoint(2)
+            Else
+                ' Original start point
+                splinePoints(i * 3) = currentStartPt(0)
+                splinePoints(i * 3 + 1) = currentStartPt(1)
+                splinePoints(i * 3 + 2) = currentStartPt(2)
+            End If
+        ElseIf i = numPoints - 1 Then
+            ' Last point - use modified end or original end
+            If distToStart >= distToEnd Then
+                ' Modifying end point
+                splinePoints(i * 3) = newPoint(0)
+                splinePoints(i * 3 + 1) = newPoint(1)
+                splinePoints(i * 3 + 2) = newPoint(2)
+            Else
+                ' Original end point
+                splinePoints(i * 3) = currentEndPt(0)
+                splinePoints(i * 3 + 1) = currentEndPt(1)
+                splinePoints(i * 3 + 2) = currentEndPt(2)
+            End If
+        Else
+            ' Intermediate points - calculate along arc
+            Dim t As Double
+            t = CDbl(i) / CDbl(numPoints - 1)
+            currentAngle = startAngle + t * totalAngle
+            
+            splinePoints(i * 3) = center(0) + radius * Cos(currentAngle)
+            splinePoints(i * 3 + 1) = center(1) + radius * Sin(currentAngle)
+            splinePoints(i * 3 + 2) = center(2)
+        End If
+    Next i
+    
+    ' Create the spline
+    Set newSpline = modelSpace.AddSpline(splinePoints, Empty, Empty)
+    
+    ' Copy properties from original arc
+    newSpline.Color = arc.Color
+    newSpline.Layer = arc.Layer
+    newSpline.Linetype = arc.Linetype
+    newSpline.LinetypeScale = arc.LinetypeScale
+    newSpline.Lineweight = arc.Lineweight
+    
+    ' Delete the original arc
+    arc.Delete
+    
+    ConvertArcToSplineAndModify = True
     Exit Function
     
 ErrorHandler:
-    ModifyArcEndpoint = False
+    ConvertArcToSplineAndModify = False
 End Function
 
 Private Sub UpdateEntityEndpoints(entity As AcadEntity, endpoints As Collection, entityIndex As Integer)
