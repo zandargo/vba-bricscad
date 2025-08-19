@@ -125,7 +125,21 @@ Public Sub FixSmallGaps()
                 Dim spline As AcadSpline
                 Set spline = entity
                 entities.Add spline
-                endpoints.Add Array(spline.StartPoint, spline.EndPoint)
+                ' Safely attempt to read start/end points; some spline objects may not expose these properties
+                On Error Resume Next
+                Dim sStart As Variant, sEnd As Variant
+                sStart = spline.StartPoint
+                sEnd = spline.EndPoint
+                If Err.Number <> 0 Then
+                    Err.Clear
+                    Dim bbMin(2) As Double, bbMax(2) As Double
+                    ' Fall back to bounding box corners if StartPoint/EndPoint are not available
+                    spline.GetBoundingBox bbMin, bbMax
+                    sStart = bbMin
+                    sEnd = bbMax
+                End If
+                On Error GoTo 0
+                endpoints.Add Array(sStart, sEnd)
                 entityTypes.Add "Spline"
         End Select
     Next i
@@ -704,7 +718,20 @@ Private Sub UpdateEntityEndpoints(entity As AcadEntity, endpoints As Collection,
         Case "AcDbSpline"
             Dim spline As AcadSpline
             Set spline = entity
-            updatedEndpoints = Array(spline.StartPoint, spline.EndPoint)
+            ' Safely attempt to read start/end points; fall back to bounding box if unavailable
+            On Error Resume Next
+            Dim tStart As Variant, tEnd As Variant
+            tStart = spline.StartPoint
+            tEnd = spline.EndPoint
+            If Err.Number <> 0 Then
+                Err.Clear
+                Dim bbMin2(2) As Double, bbMax2(2) As Double
+                spline.GetBoundingBox bbMin2, bbMax2
+                tStart = bbMin2
+                tEnd = bbMax2
+            End If
+            On Error GoTo 0
+            updatedEndpoints = Array(tStart, tEnd)
     End Select
     
     ' Replace the item in the collection by removing and adding at the same position
