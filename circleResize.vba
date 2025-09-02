@@ -45,10 +45,12 @@ Public Sub ResizeAndColorCircles()
     tempPairsCollection.Add Array(2     , 2    )
     tempPairsCollection.Add Array(3     , 3    )
     tempPairsCollection.Add Array(3.2   , 3.2  )
+    tempPairsCollection.Add Array(3.4   , 3.4  )
     tempPairsCollection.Add Array(3.242 , 1.9  )
     tempPairsCollection.Add Array(4     , 4    )
     tempPairsCollection.Add Array(6     , 6    )
     tempPairsCollection.Add Array(9     , 13.5 )
+    tempPairsCollection.Add Array(21    , 21   )
     tempPairsCollection.Add Array(22    , 22   )
     tempPairsCollection.Add Array(28    , 28   )
 
@@ -100,8 +102,10 @@ Public Sub ResizeAndColorCircles()
                     centerPoint = circleObj.Center                    ' 3. Resize that circle to the corresponding value in the pair
                     circleObj.Diameter = newDiameter
                     
-                    ' 4. Move the circle to the "Puncionadeira" layer instead of changing its color
+                    ' 4. Move the circle to the "Puncionadeira" layer and set its color to ByLayer
                     circleObj.Layer = "Puncionadeira"
+                    ' Set the object's color to ByLayer so it inherits the layer color
+                    circleObj.Color = acByLayer
                     ' Set the linetype to Continuous
                     circleObj.Linetype = "Continuous"
 
