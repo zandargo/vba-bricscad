@@ -48,7 +48,11 @@ Public Sub ResizeAndColorCircles()
     tempPairsCollection.Add Array(3.4   , 3.4  )
     tempPairsCollection.Add Array(3.242 , 1.9  )
     tempPairsCollection.Add Array(4     , 4    )
+    tempPairsCollection.Add Array(4.2   , 4.2  )
+    tempPairsCollection.Add Array(4.4   , 4.4  )
+    tempPairsCollection.Add Array(5     , 5    )
     tempPairsCollection.Add Array(6     , 6    )
+    tempPairsCollection.Add Array(8.5   , 8.5  )
     tempPairsCollection.Add Array(9     , 13.5 )
     tempPairsCollection.Add Array(21    , 21   )
     tempPairsCollection.Add Array(22    , 22   )
@@ -139,7 +143,7 @@ Public Sub ResizeAndColorCircles()
     Loop ' This is the end of the Do While loop
 
     acadDoc.Regen acAllViewports
-    MsgBox "Circle processing complete.", vbInformation
+    ' MsgBox "Circle processing complete.", vbInformation
 
 End Sub
 

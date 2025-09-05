@@ -11,6 +11,10 @@ Private Const GLOBAL_TOLERANCE As Double = 0.01
 Private Const LATERAL_WIDTHS As String = "5,10"  ' Example: "5,10,15,25"
 Private Const WIDTH_TOLERANCE_PERCENT As Double = 0.01 ' 1% margin of error
 
+' Progress bar settings
+Private Const PROGRESS_THRESHOLD As Integer = 100 ' Show progress bar if more than this many lines
+Private Const PROGRESS_INTERVAL As Integer = 10 ' Update progress every N percent
+
 Public Sub DetectPolygons()
     Dim doc As AcadDocument
     Set doc = ThisDrawing
@@ -36,23 +40,47 @@ Public Sub DetectPolygons()
     Debug.Print "Starting polygon detection with tolerance: " & GLOBAL_TOLERANCE
     Debug.Print "========================================================"
     
+    ' Determine if we need to show progress
+    Dim showProgress As Boolean
+    showProgress = lines.Count > PROGRESS_THRESHOLD
+    
+    If showProgress Then
+        Debug.Print "Processing " & lines.Count & " lines - progress will be shown..."
+        Debug.Print "Progress: [          ] 0%"
+    End If
+    
     Dim processedLines As Collection
     Set processedLines = New Collection
     
-    Dim polygonCount As Integer
-    Dim hexagonCount As Integer
-    Dim puncionadeiraCount As Integer
+    Dim polygonCount As Long
+    Dim hexagonCount As Long
+    Dim puncionadeiraCount As Long
     polygonCount = 0
     hexagonCount = 0
     puncionadeiraCount = 0
     
-    Dim lineIndex As Integer
+    Dim lineIndex As Long
     Dim startLine As AcadLine
     Dim polygon As Collection
     Dim polyLine As AcadLine
-    Dim j As Integer
+    Dim j As Long
+    
+    ' Progress tracking variables
+    Dim lastProgressPercent As Long
+    lastProgressPercent = 0
 
     For lineIndex = 1 To lines.Count
+        ' Update progress bar if needed
+        If showProgress Then
+            Dim currentPercent As Long
+            currentPercent = CLng((lineIndex * 100) / IIf(lines.Count = 0, 1, lines.Count))
+            
+            If currentPercent >= lastProgressPercent + PROGRESS_INTERVAL Then
+                Call UpdateProgressBar(currentPercent)
+                lastProgressPercent = currentPercent
+            End If
+        End If
+        
         Set startLine = lines(lineIndex)
 
         ' Skip if this line was already processed in a polygon
@@ -92,6 +120,12 @@ Public Sub DetectPolygons()
         End If
     Next lineIndex
     
+    ' Complete progress bar if shown
+    If showProgress Then
+        Call UpdateProgressBar(100)
+        Debug.Print "" ' Add blank line after progress
+    End If
+    
     Debug.Print ""
     Debug.Print "Total polygons found: " & polygonCount
     Debug.Print "Total hexagons found: " & hexagonCount
@@ -116,9 +150,9 @@ Private Function FindPolygon(startLine As AcadLine, allLines As Collection, tole
     Dim currentEndPoint As Variant
     currentEndPoint = currentLine.EndPoint
     
-    Dim maxIterations As Integer
+    Dim maxIterations As Long
     maxIterations = 50 ' Prevent infinite loops
-    Dim iteration As Integer
+    Dim iteration As Long
     iteration = 0
     
     Do While iteration < maxIterations
@@ -183,7 +217,7 @@ End Function
 ' Finds a line connected to the given point
 Private Function FindConnectedLine(point As Variant, allLines As Collection, visitedLines As Collection, tolerance As Double) As AcadLine
     Dim line As AcadLine
-    Dim i As Integer
+        Dim i As Long
     
     For i = 1 To allLines.Count
         Set line = allLines(i)
@@ -219,7 +253,7 @@ End Function
 ' Checks if a line is in a collection
 Private Function IsLineInCollection(line As AcadLine, collection As Collection) As Boolean
     Dim item As AcadLine
-    Dim i As Integer
+        Dim i As Long
     
     For i = 1 To collection.Count
         Set item = collection(i)
@@ -238,13 +272,13 @@ Private Function IsLineProcessed(line As AcadLine, processedLines As Collection)
 End Function
 
 ' Reports information about a found polygon
-Private Sub ReportPolygon(polygon As Collection, polygonNumber As Integer)
+Private Sub ReportPolygon(polygon As Collection, polygonNumber As Long)
     Debug.Print "Polygon #" & polygonNumber & ":"
     Debug.Print "  Number of sides: " & polygon.Count
     Debug.Print "  Line handles: ";
     
     Dim line As AcadLine
-    Dim i As Integer
+    Dim i As Long
     For i = 1 To polygon.Count
         Set line = polygon(i)
         Debug.Print line.Handle;
@@ -270,7 +304,7 @@ Private Function CalculatePolygonPerimeter(polygon As Collection) As Double
     totalLength = 0
     
     Dim line As AcadLine
-    Dim i As Integer
+        Dim i As Long
     For i = 1 To polygon.Count
         Set line = polygon(i)
         totalLength = totalLength + line.Length
@@ -290,7 +324,7 @@ Private Function CalculatePolygonArea(polygon As Collection) As Double
     area = 0
     
     Dim line As AcadLine
-    Dim i As Integer
+    Dim i As Long
     For i = 1 To polygon.Count
         Set line = polygon(i)
         Dim x1 As Double, y1 As Double
@@ -310,7 +344,7 @@ End Function
 ' Helper function to highlight found polygons (optional)
 Public Sub HighlightPolygon(polygon As Collection, colorIndex As Integer)
     Dim line As AcadLine
-    Dim i As Integer
+    Dim i As Long
     For i = 1 To polygon.Count
         Set line = polygon(i)
         line.color = colorIndex
@@ -349,10 +383,12 @@ End Sub
 ' Moves all lines of a polygon to the Hexagonos layer
 Private Sub MovePolygonToHexagonosLayer(polygon As Collection)
     Dim line As AcadLine
-    Dim i As Integer
+        Dim i As Long
     
     For i = 1 To polygon.Count
         Set line = polygon(i)
+        ' Ensure the line uses the layer color by setting its color to ByLayer
+        line.Color = acByLayer
         line.Layer = "Hexagonos"
     Next i
 End Sub
@@ -387,10 +423,12 @@ End Sub
 ' Moves all lines of a polygon to the Puncionadeira layer
 Private Sub MovePolygonToPuncionadeiraLayer(polygon As Collection)
     Dim line As AcadLine
-    Dim i As Integer
+        Dim i As Long
     
     For i = 1 To polygon.Count
         Set line = polygon(i)
+        ' Ensure the line uses the layer color by setting its color to ByLayer
+        line.Color = acByLayer
         line.Layer = "Puncionadeira"
     Next i
 End Sub
@@ -408,7 +446,7 @@ Private Function GetHexagonLateralWidth(polygon As Collection) As Double
     maxDistance = 0
     
     Dim line1 As AcadLine, line2 As AcadLine
-    Dim i As Integer, j As Integer
+        Dim i As Long, j As Long
     
     For i = 1 To polygon.Count
         Set line1 = polygon(i)
@@ -495,8 +533,8 @@ Private Function IsWidthInList(width As Double) As Boolean
     Dim widthArray As Variant
     widthArray = Split(LATERAL_WIDTHS, ",")
     
-    Dim i As Integer
-    For i = 0 To UBound(widthArray)
+    Dim i As Long
+        For i = 0 To UBound(widthArray)
         Dim targetWidth As Double
         targetWidth = CDbl(Trim(widthArray(i)))
         
@@ -512,3 +550,33 @@ Private Function IsWidthInList(width As Double) As Boolean
     
     IsWidthInList = False
 End Function
+
+' Updates and displays a text-based progress bar
+Private Sub UpdateProgressBar(percent As Long)
+    Dim progressBar As String
+    Dim barLength As Long
+    barLength = 10
+    
+    Dim filledLength As Long
+    filledLength = CLng((percent * barLength) / 100)
+    
+    ' Build progress bar string
+    progressBar = "Progress: ["
+    
+    Dim i As Long
+    For i = 1 To barLength
+        If i <= filledLength Then
+            progressBar = progressBar & "="
+        Else
+            progressBar = progressBar & " "
+        End If
+    Next i
+    
+    progressBar = progressBar & "] " & percent & "%"
+    
+    ' Clear previous line and print new progress
+    Debug.Print Chr(13) & progressBar;
+    
+    ' Force immediate update of the debug window
+    DoEvents
+End Sub
