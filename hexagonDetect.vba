@@ -7,12 +7,19 @@ Option Explicit
 ' Global tolerance value for line connection detection
 Private Const GLOBAL_TOLERANCE As Double = 0.01
 
+' List of lateral widths to check for hexagons (in drawing units)
+Private Const LATERAL_WIDTHS As String = "5,10"  ' Example: "5,10,15,25"
+Private Const WIDTH_TOLERANCE_PERCENT As Double = 0.01 ' 1% margin of error
+
 Public Sub DetectPolygons()
     Dim doc As AcadDocument
     Set doc = ThisDrawing
     
     ' Ensure Hexagonos layer exists and is green
     Call EnsureHexagonosLayer
+    
+    ' Ensure Puncionadeira layer exists and is red
+    Call EnsurePuncionadeiraLayer
     
     Dim lines As Collection
     Set lines = New Collection
@@ -34,8 +41,10 @@ Public Sub DetectPolygons()
     
     Dim polygonCount As Integer
     Dim hexagonCount As Integer
+    Dim puncionadeiraCount As Integer
     polygonCount = 0
     hexagonCount = 0
+    puncionadeiraCount = 0
     
     Dim lineIndex As Integer
     Dim startLine As AcadLine
@@ -55,11 +64,22 @@ Public Sub DetectPolygons()
                     polygonCount = polygonCount + 1
                     Call ReportPolygon(polygon, polygonCount)
                     
-                    ' Check if it's a hexagon and move to Hexagonos layer
+                    ' Check if it's a hexagon and move to appropriate layer
                     If polygon.Count = 6 Then
                         hexagonCount = hexagonCount + 1
-                        Call MovePolygonToHexagonosLayer(polygon)
-                        Debug.Print "  --> Moved hexagon to 'Hexagonos' layer"
+                        
+                        ' Check if hexagon has lateral width matching our list
+                        Dim lateralWidth As Double
+                        lateralWidth = GetHexagonLateralWidth(polygon)
+                        
+                        If IsWidthInList(lateralWidth) Then
+                            puncionadeiraCount = puncionadeiraCount + 1
+                            Call MovePolygonToPuncionadeiraLayer(polygon)
+                            Debug.Print "  --> Hexagon with lateral width " & Format(lateralWidth, "0.000") & " moved to 'Puncionadeira' layer"
+                        Else
+                            Call MovePolygonToHexagonosLayer(polygon)
+                            Debug.Print "  --> Hexagon with lateral width " & Format(lateralWidth, "0.000") & " moved to 'Hexagonos' layer"
+                        End If
                     End If
 
                     ' Mark all lines in this polygon as processed
@@ -74,7 +94,9 @@ Public Sub DetectPolygons()
     
     Debug.Print ""
     Debug.Print "Total polygons found: " & polygonCount
-    Debug.Print "Total hexagons found and moved to 'Hexagonos' layer: " & hexagonCount
+    Debug.Print "Total hexagons found: " & hexagonCount
+    Debug.Print "Hexagons moved to 'Hexagonos' layer: " & (hexagonCount - puncionadeiraCount)
+    Debug.Print "Hexagons moved to 'Puncionadeira' layer: " & puncionadeiraCount
     Debug.Print "Polygon detection completed."
 End Sub
 
@@ -318,7 +340,7 @@ CreateLayer:
     
 ConfigureLayer:
     ' Set layer color to green (color index 3)
-    hexagonosLayer.color = acGreen
+   '  hexagonosLayer.color = acGreen
     hexagonosLayer.Linetype = "Continuous"
     
     Debug.Print "Configured layer '" & layerName & "' as green"
@@ -334,3 +356,159 @@ Private Sub MovePolygonToHexagonosLayer(polygon As Collection)
         line.Layer = "Hexagonos"
     Next i
 End Sub
+
+' Ensures the Puncionadeira layer exists and is configured as red
+Private Sub EnsurePuncionadeiraLayer()
+    Dim doc As AcadDocument
+    Set doc = ThisDrawing
+    
+    Dim layerName As String
+    layerName = "Puncionadeira"
+    
+    Dim puncionadeiraLayer As AcadLayer
+    
+    ' Try to get the layer, create it if it doesn't exist
+    On Error GoTo CreateLayer
+    Set puncionadeiraLayer = doc.Layers(layerName)
+    GoTo ConfigureLayer
+    
+CreateLayer:
+    Set puncionadeiraLayer = doc.Layers.Add(layerName)
+    Debug.Print "Created layer '" & layerName & "'"
+    
+ConfigureLayer:
+    ' Set layer color to red (color index 1)
+    puncionadeiraLayer.color = acRed
+    puncionadeiraLayer.Linetype = "Continuous"
+    
+    Debug.Print "Configured layer '" & layerName & "' as red"
+End Sub
+
+' Moves all lines of a polygon to the Puncionadeira layer
+Private Sub MovePolygonToPuncionadeiraLayer(polygon As Collection)
+    Dim line As AcadLine
+    Dim i As Integer
+    
+    For i = 1 To polygon.Count
+        Set line = polygon(i)
+        line.Layer = "Puncionadeira"
+    Next i
+End Sub
+
+' Calculates the lateral width of a hexagon (distance between parallel sides)
+Private Function GetHexagonLateralWidth(polygon As Collection) As Double
+    If polygon.Count <> 6 Then
+        GetHexagonLateralWidth = 0
+        Exit Function
+    End If
+    
+    ' For a regular hexagon, we need to find the distance between parallel sides
+    ' We'll calculate the distance from each line to all other lines and find the maximum
+    Dim maxDistance As Double
+    maxDistance = 0
+    
+    Dim line1 As AcadLine, line2 As AcadLine
+    Dim i As Integer, j As Integer
+    
+    For i = 1 To polygon.Count
+        Set line1 = polygon(i)
+        For j = i + 1 To polygon.Count
+            Set line2 = polygon(j)
+            
+            ' Check if lines are approximately parallel
+            If AreLinesParallel(line1, line2) Then
+                Dim distance As Double
+                distance = DistanceBetweenParallelLines(line1, line2)
+                If distance > maxDistance Then
+                    maxDistance = distance
+                End If
+            End If
+        Next j
+    Next i
+    
+    GetHexagonLateralWidth = maxDistance
+End Function
+
+' Checks if two lines are approximately parallel
+Private Function AreLinesParallel(line1 As AcadLine, line2 As AcadLine) As Boolean
+    Dim dx1 As Double, dy1 As Double
+    Dim dx2 As Double, dy2 As Double
+    
+    ' Calculate direction vectors
+    dx1 = line1.EndPoint(0) - line1.StartPoint(0)
+    dy1 = line1.EndPoint(1) - line1.StartPoint(1)
+    dx2 = line2.EndPoint(0) - line2.StartPoint(0)
+    dy2 = line2.EndPoint(1) - line2.StartPoint(1)
+    
+    ' Normalize the vectors
+    Dim len1 As Double, len2 As Double
+    len1 = Sqr(dx1 * dx1 + dy1 * dy1)
+    len2 = Sqr(dx2 * dx2 + dy2 * dy2)
+    
+    If len1 = 0 Or len2 = 0 Then
+        AreLinesParallel = False
+        Exit Function
+    End If
+    
+    dx1 = dx1 / len1
+    dy1 = dy1 / len1
+    dx2 = dx2 / len2
+    dy2 = dy2 / len2
+    
+    ' Calculate cross product (for 2D, this is dx1*dy2 - dy1*dx2)
+    Dim crossProduct As Double
+    crossProduct = Abs(dx1 * dy2 - dy1 * dx2)
+    
+    ' Lines are parallel if cross product is close to 0
+    AreLinesParallel = crossProduct < 0.1 ' Tolerance for "approximately parallel"
+End Function
+
+' Calculates distance between two parallel lines
+Private Function DistanceBetweenParallelLines(line1 As AcadLine, line2 As AcadLine) As Double
+    ' Use point-to-line distance formula
+    ' Distance from point (x0,y0) to line ax + by + c = 0 is |ax0 + by0 + c| / sqrt(a^2 + b^2)
+    
+    ' Get line1 equation coefficients (ax + by + c = 0)
+    Dim dx As Double, dy As Double
+    dx = line1.EndPoint(0) - line1.StartPoint(0)
+    dy = line1.EndPoint(1) - line1.StartPoint(1)
+    
+    ' Normal vector to line1 is (-dy, dx)
+    Dim a As Double, b As Double, c As Double
+    a = -dy
+    b = dx
+    c = dy * line1.StartPoint(0) - dx * line1.StartPoint(1)
+    
+    ' Calculate distance from line2's start point to line1
+    Dim x0 As Double, y0 As Double
+    x0 = line2.StartPoint(0)
+    y0 = line2.StartPoint(1)
+    
+    Dim distance As Double
+    distance = Abs(a * x0 + b * y0 + c) / Sqr(a * a + b * b)
+    
+    DistanceBetweenParallelLines = distance
+End Function
+
+' Checks if a width matches any value in our lateral widths list (within tolerance)
+Private Function IsWidthInList(width As Double) As Boolean
+    Dim widthArray As Variant
+    widthArray = Split(LATERAL_WIDTHS, ",")
+    
+    Dim i As Integer
+    For i = 0 To UBound(widthArray)
+        Dim targetWidth As Double
+        targetWidth = CDbl(Trim(widthArray(i)))
+        
+        ' Check if width is within tolerance percentage
+        Dim tolerance As Double
+        tolerance = targetWidth * WIDTH_TOLERANCE_PERCENT
+        
+        If Abs(width - targetWidth) <= tolerance Then
+            IsWidthInList = True
+            Exit Function
+        End If
+    Next i
+    
+    IsWidthInList = False
+End Function
