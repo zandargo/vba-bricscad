@@ -130,10 +130,10 @@ Public Sub RotateLinesAndCreateCircle()
     Dim midStart2 As Variant
     Dim midEnd2 As Variant
 
-    midStart1 = MidPoint(lineA1.StartPoint, lineB1.StartPoint)
-    midEnd1 = MidPoint(lineA1.EndPoint, lineB1.EndPoint)
-    midStart2 = MidPoint(lineA2.StartPoint, lineB2.StartPoint)
-    midEnd2 = MidPoint(lineA2.EndPoint, lineB2.EndPoint)
+    midStart1 = MidPoint(lineA1.StartPoint, lineB2.StartPoint)
+    midEnd1 = MidPoint(lineA1.EndPoint, lineB2.EndPoint)
+    midStart2 = MidPoint(lineA2.StartPoint, lineB1.StartPoint)
+    midEnd2 = MidPoint(lineA2.EndPoint, lineB1.EndPoint)
 
     Set lineR1 = acadDoc.ModelSpace.AddLine(midStart1, midEnd1)
     lineR1.Layer = "0"
