@@ -124,22 +124,37 @@ Public Sub RotateLinesAndCreateCircle()
     Call RotateLineAroundPoint(lineB2, commonPoint, angleMinus90)
     Call EnsureStartsAtPoint(lineB2, commonPoint, tolerance)
 
-    ' Add center lines in red (pointwise midpoint between corresponding ends)
+    ' Add center lines in red using angle bisectors between rotated pairs
     Dim midStart1 As Variant
     Dim midEnd1 As Variant
     Dim midStart2 As Variant
     Dim midEnd2 As Variant
+    Dim lenR1 As Double
+    Dim lenR2 As Double
+    Dim dirR1 As Variant
+    Dim dirR2 As Variant
+    Dim newEndR1 As Variant
+    Dim newEndR2 As Variant
 
     midStart1 = MidPoint(lineA1.StartPoint, lineB2.StartPoint)
     midEnd1 = MidPoint(lineA1.EndPoint, lineB2.EndPoint)
     midStart2 = MidPoint(lineA2.StartPoint, lineB1.StartPoint)
     midEnd2 = MidPoint(lineA2.EndPoint, lineB1.EndPoint)
 
-    Set lineR1 = acadDoc.ModelSpace.AddLine(midStart1, midEnd1)
+    lenR1 = DistanceBetweenPoints(midStart1, midEnd1)
+    lenR2 = DistanceBetweenPoints(midStart2, midEnd2)
+
+    dirR1 = BisectorDirection(lineA1, lineB2, tolerance)
+    dirR2 = BisectorDirection(lineA2, lineB1, tolerance)
+
+    newEndR1 = PointAlongDirection(midStart1, dirR1, lenR1)
+    newEndR2 = PointAlongDirection(midStart2, dirR2, lenR2)
+
+    Set lineR1 = acadDoc.ModelSpace.AddLine(midStart1, newEndR1)
     lineR1.Layer = "0"
     lineR1.Color = 1 ' red
 
-    Set lineR2 = acadDoc.ModelSpace.AddLine(midStart2, midEnd2)
+    Set lineR2 = acadDoc.ModelSpace.AddLine(midStart2, newEndR2)
     lineR2.Layer = "0"
     lineR2.Color = 1 ' red
     
@@ -235,3 +250,81 @@ Private Sub EnsureStartsAtPoint(ln As Object, targetPoint As Variant, tol As Dou
         ln.EndPoint = tmpStart
     End If
 End Sub
+
+Private Function DistanceBetweenPoints(p1 As Variant, p2 As Variant) As Double
+    Dim dx As Double, dy As Double, dz As Double
+    dx = p1(0) - p2(0)
+    dy = p1(1) - p2(1)
+    dz = p1(2) - p2(2)
+    DistanceBetweenPoints = Sqr(dx * dx + dy * dy + dz * dz)
+End Function
+
+Private Function VectorFromPoints(p1 As Variant, p2 As Variant) As Variant
+    Dim v(0 To 2) As Double
+    v(0) = p2(0) - p1(0)
+    v(1) = p2(1) - p1(1)
+    v(2) = p2(2) - p1(2)
+    VectorFromPoints = v
+End Function
+
+Private Function VectorLength(v As Variant) As Double
+    VectorLength = Sqr(v(0) * v(0) + v(1) * v(1) + v(2) * v(2))
+End Function
+
+Private Function NormalizeVector(v As Variant) As Variant
+    Dim dLen As Double
+    Dim n(0 To 2) As Double
+    dLen = VectorLength(v)
+    If dLen = 0 Then
+        n(0) = 0: n(1) = 0: n(2) = 0
+    Else
+        n(0) = v(0) / dLen
+        n(1) = v(1) / dLen
+        n(2) = v(2) / dLen
+    End If
+    NormalizeVector = n
+End Function
+
+Private Function AddVectors(v1 As Variant, v2 As Variant) As Variant
+    Dim r(0 To 2) As Double
+    r(0) = v1(0) + v2(0)
+    r(1) = v1(1) + v2(1)
+    r(2) = v1(2) + v2(2)
+    AddVectors = r
+End Function
+
+Private Function ScaleVector(v As Variant, factor As Double) As Variant
+    Dim r(0 To 2) As Double
+    r(0) = v(0) * factor
+    r(1) = v(1) * factor
+    r(2) = v(2) * factor
+    ScaleVector = r
+End Function
+
+Private Function PointAlongDirection(basePoint As Variant, dirUnit As Variant, dist As Double) As Variant
+    Dim r(0 To 2) As Double
+    r(0) = basePoint(0) + dirUnit(0) * dist
+    r(1) = basePoint(1) + dirUnit(1) * dist
+    r(2) = basePoint(2) + dirUnit(2) * dist
+    PointAlongDirection = r
+End Function
+
+Private Function LineDirectionUnit(ln As Object) As Variant
+    LineDirectionUnit = NormalizeVector(VectorFromPoints(ln.StartPoint, ln.EndPoint))
+End Function
+
+Private Function BisectorDirection(ln1 As Object, ln2 As Object, tol As Double) As Variant
+    Dim u1 As Variant
+    Dim u2 As Variant
+    Dim sumVec As Variant
+
+    u1 = LineDirectionUnit(ln1)
+    u2 = LineDirectionUnit(ln2)
+    sumVec = AddVectors(u1, u2)
+
+    If VectorLength(sumVec) < tol Then
+        BisectorDirection = u1 ' fallback when directions oppose each other
+    Else
+        BisectorDirection = NormalizeVector(sumVec)
+    End If
+End Function
