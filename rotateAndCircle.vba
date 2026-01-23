@@ -29,147 +29,146 @@ Public Sub RotateLinesAndCreateCircle()
     
     ' Set tolerance for point comparison (small value for coordinate matching)
     tolerance = 0.0001
+
+    Do While True
+        ' Prompt user to select first line (Line A)
+        Err.Clear
+        On Error Resume Next
+        acadDoc.Utility.GetEntity objEntity, commonPoint, vbCrLf & "Select Line A (<Esc> to stop): "
+        If Err.Number <> 0 Then Exit Do ' Esc cancels the loop
+        On Error GoTo ErrorHandler
+        
+        ' Check if selected entity is a line
+        If objEntity.ObjectName <> "AcDbLine" Then
+            MsgBox "Selected entity is not a line. Please select a line.", vbExclamation
+            GoTo ContinueLoop
+        End If
+        Set lineA = objEntity
+        
+        ' Prompt user to select second line (Line B)
+        Err.Clear
+        On Error Resume Next
+        acadDoc.Utility.GetEntity objEntity, commonPoint, vbCrLf & "Select Line B (<Esc> to stop): "
+        If Err.Number <> 0 Then Exit Do ' Esc cancels the loop
+        On Error GoTo ErrorHandler
+        
+        ' Check if selected entity is a line
+        If objEntity.ObjectName <> "AcDbLine" Then
+            MsgBox "Selected entity is not a line. Please select a line.", vbExclamation
+            GoTo ContinueLoop
+        End If
+        Set lineB = objEntity
+        
+        ' Find common endpoint (Point C)
+        foundCommonPoint = False
+        
+        ' Check if Line A's start point matches Line B's start point
+        If PointsAreEqual(lineA.StartPoint, lineB.StartPoint, tolerance) Then
+            commonPoint = lineA.StartPoint
+            foundCommonPoint = True
+        ' Check if Line A's start point matches Line B's end point
+        ElseIf PointsAreEqual(lineA.StartPoint, lineB.EndPoint, tolerance) Then
+            commonPoint = lineA.StartPoint
+            foundCommonPoint = True
+        ' Check if Line A's end point matches Line B's start point
+        ElseIf PointsAreEqual(lineA.EndPoint, lineB.StartPoint, tolerance) Then
+            commonPoint = lineA.EndPoint
+            foundCommonPoint = True
+        ' Check if Line A's end point matches Line B's end point
+        ElseIf PointsAreEqual(lineA.EndPoint, lineB.EndPoint, tolerance) Then
+            commonPoint = lineA.EndPoint
+            foundCommonPoint = True
+        End If
+        
+        ' If no common point found, skip this iteration
+        If Not foundCommonPoint Then
+            MsgBox "The selected lines do not share a common endpoint.", vbExclamation
+            GoTo ContinueLoop
+        End If
+        
+        ' Ensure Layer 0 exists (it should always exist)
+        On Error Resume Next
+        Set layer0 = acadDoc.Layers.Item("0")
+        On Error GoTo ErrorHandler
+        
+        ' Create the four rotated lines
+        
+        ' Define rotation angles (in radians)
+        angle90 = 90 * 3.14159265358979 / 180      ' 90 degrees
+        angleMinus90 = -90 * 3.14159265358979 / 180 ' -90 degrees
+        
+        ' Copy and rotate Line A by +90 degrees (Line A1)
+        Set lineA1 = lineA.Copy
+        lineA1.Layer = "0"
+        Call RotateLineAroundPoint(lineA1, commonPoint, angle90)
+        Call EnsureStartsAtPoint(lineA1, commonPoint, tolerance)
+        
+        ' Copy and rotate Line A by -90 degrees (Line A2)
+        Set lineA2 = lineA.Copy
+        lineA2.Layer = "0"
+        Call RotateLineAroundPoint(lineA2, commonPoint, angleMinus90)
+        Call EnsureStartsAtPoint(lineA2, commonPoint, tolerance)
+        
+        ' Copy and rotate Line B by +90 degrees (Line B1)
+        Set lineB1 = lineB.Copy
+        lineB1.Layer = "0"
+        Call RotateLineAroundPoint(lineB1, commonPoint, angle90)
+        Call EnsureStartsAtPoint(lineB1, commonPoint, tolerance)
+        
+        ' Copy and rotate Line B by -90 degrees (Line B2)
+        Set lineB2 = lineB.Copy
+        lineB2.Layer = "0"
+        Call RotateLineAroundPoint(lineB2, commonPoint, angleMinus90)
+        Call EnsureStartsAtPoint(lineB2, commonPoint, tolerance)
+
+        ' Add center lines in red using angle bisectors between rotated pairs
+        Dim midStart1 As Variant
+        Dim midEnd1 As Variant
+        Dim midStart2 As Variant
+        Dim midEnd2 As Variant
+        Dim lenR1 As Double
+        Dim lenR2 As Double
+        Dim dirR1 As Variant
+        Dim dirR2 As Variant
+        Dim newEndR1 As Variant
+        Dim newEndR2 As Variant
+
+        midStart1 = MidPoint(lineA1.StartPoint, lineB2.StartPoint)
+        midEnd1 = MidPoint(lineA1.EndPoint, lineB2.EndPoint)
+        midStart2 = MidPoint(lineA2.StartPoint, lineB1.StartPoint)
+        midEnd2 = MidPoint(lineA2.EndPoint, lineB1.EndPoint)
+
+        lenR1 = DistanceBetweenPoints(midStart1, midEnd1)
+        lenR2 = DistanceBetweenPoints(midStart2, midEnd2)
+
+        dirR1 = BisectorDirection(lineA1, lineB2, tolerance)
+        dirR2 = BisectorDirection(lineA2, lineB1, tolerance)
+
+        newEndR1 = PointAlongDirection(midStart1, dirR1, lenR1)
+        newEndR2 = PointAlongDirection(midStart2, dirR2, lenR2)
+
+        Set lineR1 = acadDoc.ModelSpace.AddLine(midStart1, newEndR1)
+        lineR1.Layer = "0"
+        lineR1.Color = 1 ' red
+
+        Set lineR2 = acadDoc.ModelSpace.AddLine(midStart2, newEndR2)
+        lineR2.Layer = "0"
+        lineR2.Color = 1 ' red
+        
+        ' Create objCircle at Point C with 1.3mm radius
+        radius = 1.3 ' 1.3mm radius
+        
+        Set objCircle = acadDoc.ModelSpace.AddCircle(commonPoint, radius)
+        objCircle.Layer = "0"
+        
+        ' Refresh the display
+        acadDoc.Regen acAllViewports
+ContinueLoop:
+    Loop
     
-    ' Prompt user to select first line (Line A)
-    On Error Resume Next
-    acadDoc.Utility.GetEntity objEntity, commonPoint, vbCrLf & "Select Line A: "
-    If Err.Number <> 0 Then
-        MsgBox "Selection cancelled.", vbInformation
+       '  MsgBox "Operation completed successfully!" & vbCrLf & "Created 4 rotated lines and 1 objCircle at the common endpoint.", vbInformation
+    
         Exit Sub
-    End If
-    On Error GoTo ErrorHandler
-    
-    ' Check if selected entity is a line
-    If objEntity.ObjectName <> "AcDbLine" Then
-        MsgBox "Selected entity is not a line. Please select a line.", vbExclamation
-        Exit Sub
-    End If
-    Set lineA = objEntity
-    
-    ' Prompt user to select second line (Line B)
-    On Error Resume Next
-    acadDoc.Utility.GetEntity objEntity, commonPoint, vbCrLf & "Select Line B: "
-    If Err.Number <> 0 Then
-        MsgBox "Selection cancelled.", vbInformation
-        Exit Sub
-    End If
-    On Error GoTo ErrorHandler
-    
-    ' Check if selected entity is a line
-    If objEntity.ObjectName <> "AcDbLine" Then
-        MsgBox "Selected entity is not a line. Please select a line.", vbExclamation
-        Exit Sub
-    End If
-    Set lineB = objEntity
-    
-    ' Find common endpoint (Point C)
-    foundCommonPoint = False
-    
-    ' Check if Line A's start point matches Line B's start point
-    If PointsAreEqual(lineA.StartPoint, lineB.StartPoint, tolerance) Then
-        commonPoint = lineA.StartPoint
-        foundCommonPoint = True
-    ' Check if Line A's start point matches Line B's end point
-    ElseIf PointsAreEqual(lineA.StartPoint, lineB.EndPoint, tolerance) Then
-        commonPoint = lineA.StartPoint
-        foundCommonPoint = True
-    ' Check if Line A's end point matches Line B's start point
-    ElseIf PointsAreEqual(lineA.EndPoint, lineB.StartPoint, tolerance) Then
-        commonPoint = lineA.EndPoint
-        foundCommonPoint = True
-    ' Check if Line A's end point matches Line B's end point
-    ElseIf PointsAreEqual(lineA.EndPoint, lineB.EndPoint, tolerance) Then
-        commonPoint = lineA.EndPoint
-        foundCommonPoint = True
-    End If
-    
-    ' If no common point found, exit
-    If Not foundCommonPoint Then
-        MsgBox "The selected lines do not share a common endpoint.", vbExclamation
-        Exit Sub
-    End If
-    
-    ' Ensure Layer 0 exists (it should always exist)
-    On Error Resume Next
-    Set layer0 = acadDoc.Layers.Item("0")
-    On Error GoTo ErrorHandler
-    
-    ' Create the four rotated lines
-    
-    ' Define rotation angles (in radians)
-    angle90 = 90 * 3.14159265358979 / 180      ' 90 degrees
-    angleMinus90 = -90 * 3.14159265358979 / 180 ' -90 degrees
-    
-    ' Copy and rotate Line A by +90 degrees (Line A1)
-    Set lineA1 = lineA.Copy
-    lineA1.Layer = "0"
-    Call RotateLineAroundPoint(lineA1, commonPoint, angle90)
-    Call EnsureStartsAtPoint(lineA1, commonPoint, tolerance)
-    
-    ' Copy and rotate Line A by -90 degrees (Line A2)
-    Set lineA2 = lineA.Copy
-    lineA2.Layer = "0"
-    Call RotateLineAroundPoint(lineA2, commonPoint, angleMinus90)
-    Call EnsureStartsAtPoint(lineA2, commonPoint, tolerance)
-    
-    ' Copy and rotate Line B by +90 degrees (Line B1)
-    Set lineB1 = lineB.Copy
-    lineB1.Layer = "0"
-    Call RotateLineAroundPoint(lineB1, commonPoint, angle90)
-    Call EnsureStartsAtPoint(lineB1, commonPoint, tolerance)
-    
-    ' Copy and rotate Line B by -90 degrees (Line B2)
-    Set lineB2 = lineB.Copy
-    lineB2.Layer = "0"
-    Call RotateLineAroundPoint(lineB2, commonPoint, angleMinus90)
-    Call EnsureStartsAtPoint(lineB2, commonPoint, tolerance)
-
-    ' Add center lines in red using angle bisectors between rotated pairs
-    Dim midStart1 As Variant
-    Dim midEnd1 As Variant
-    Dim midStart2 As Variant
-    Dim midEnd2 As Variant
-    Dim lenR1 As Double
-    Dim lenR2 As Double
-    Dim dirR1 As Variant
-    Dim dirR2 As Variant
-    Dim newEndR1 As Variant
-    Dim newEndR2 As Variant
-
-    midStart1 = MidPoint(lineA1.StartPoint, lineB2.StartPoint)
-    midEnd1 = MidPoint(lineA1.EndPoint, lineB2.EndPoint)
-    midStart2 = MidPoint(lineA2.StartPoint, lineB1.StartPoint)
-    midEnd2 = MidPoint(lineA2.EndPoint, lineB1.EndPoint)
-
-    lenR1 = DistanceBetweenPoints(midStart1, midEnd1)
-    lenR2 = DistanceBetweenPoints(midStart2, midEnd2)
-
-    dirR1 = BisectorDirection(lineA1, lineB2, tolerance)
-    dirR2 = BisectorDirection(lineA2, lineB1, tolerance)
-
-    newEndR1 = PointAlongDirection(midStart1, dirR1, lenR1)
-    newEndR2 = PointAlongDirection(midStart2, dirR2, lenR2)
-
-    Set lineR1 = acadDoc.ModelSpace.AddLine(midStart1, newEndR1)
-    lineR1.Layer = "0"
-    lineR1.Color = 1 ' red
-
-    Set lineR2 = acadDoc.ModelSpace.AddLine(midStart2, newEndR2)
-    lineR2.Layer = "0"
-    lineR2.Color = 1 ' red
-    
-    ' Create objCircle at Point C with 1.3mm radius
-    radius = 1.3 ' 1.3mm radius
-    
-    Set objCircle = acadDoc.ModelSpace.AddCircle(commonPoint, radius)
-    objCircle.Layer = "0"
-    
-    ' Refresh the display
-    acadDoc.Regen acAllViewports
-    
-   '  MsgBox "Operation completed successfully!" & vbCrLf & "Created 4 rotated lines and 1 objCircle at the common endpoint.", vbInformation
-    
-    Exit Sub
 
 ErrorHandler:
     MsgBox "Error: " & Err.Description, vbCritical
