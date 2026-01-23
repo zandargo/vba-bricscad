@@ -14,50 +14,48 @@ Public Sub RotateTextToLineAngle()
     Set acadApp = ThisDrawing.Application
     Set acadDoc = ThisDrawing
     
-    ' Select the line
-    On Error Resume Next
-    acadDoc.Utility.GetEntity objLine, pickPt, vbCrLf & "Select a line: "
-    If Err.Number <> 0 Then
-        MsgBox "Selection cancelled.", vbInformation
-        Exit Sub
-    End If
-    On Error GoTo ErrorHandler
-    
-    If objLine.ObjectName <> "AcDbLine" Then
-        MsgBox "Please select a line entity.", vbExclamation
-        Exit Sub
-    End If
-    midPt = MidPoint(objLine.StartPoint, objLine.EndPoint)
-    
-    ' Select the text (Text or MText)
-    On Error Resume Next
-    acadDoc.Utility.GetEntity objText, pickPt, vbCrLf & "Select a text (TEXT/MTEXT): "
-    If Err.Number <> 0 Then
-        MsgBox "Selection cancelled.", vbInformation
-        Exit Sub
-    End If
-    On Error GoTo ErrorHandler
-    
-    If Not (objText.ObjectName = "AcDbText" Or objText.ObjectName = "AcDbMText") Then
-        MsgBox "Please select a TEXT or MTEXT entity.", vbExclamation
-        Exit Sub
-    End If
-    
-    lineAngle = objLine.Angle ' radians
-    objText.Rotation = lineAngle
+    Do While True
+        ' Select the line
+        Err.Clear
+        On Error Resume Next
+        acadDoc.Utility.GetEntity objLine, pickPt, vbCrLf & "Select a line (<Esc> to stop): "
+        If Err.Number <> 0 Then Exit Do ' Esc cancels the loop
+        On Error GoTo ErrorHandler
+        
+        If objLine.ObjectName <> "AcDbLine" Then
+            MsgBox "Please select a line entity.", vbExclamation
+            GoTo ContinueLoop
+        End If
+        midPt = MidPoint(objLine.StartPoint, objLine.EndPoint)
+        
+        ' Select the text (Text or MText)
+        Err.Clear
+        On Error Resume Next
+        acadDoc.Utility.GetEntity objText, pickPt, vbCrLf & "Select a text (TEXT/MTEXT) (<Esc> to stop): "
+        If Err.Number <> 0 Then Exit Do ' Esc cancels the loop
+        On Error GoTo ErrorHandler
+        
+        If Not (objText.ObjectName = "AcDbText" Or objText.ObjectName = "AcDbMText") Then
+            MsgBox "Please select a TEXT or MTEXT entity.", vbExclamation
+            GoTo ContinueLoop
+        End If
+        
+        lineAngle = objLine.Angle ' radians
+        objText.Rotation = lineAngle
 
-    ' Place text at line midpoint and align bottom-center
-    If objText.ObjectName = "AcDbText" Then
-        objText.Alignment = acAlignmentBottomCenter
-        objText.TextAlignmentPoint = midPt
-        objText.InsertionPoint = midPt
-    ElseIf objText.ObjectName = "AcDbMText" Then
-        objText.AttachmentPoint = acAttachmentPointBottomCenter
-        objText.InsertionPoint = midPt
-    End If
-    
-    acadDoc.Regen acAllViewports
-    ' MsgBox "Text rotation updated to match line angle.", vbInformation
+        ' Place text at line midpoint and align bottom-center
+        If objText.ObjectName = "AcDbText" Then
+            objText.Alignment = acAlignmentBottomCenter
+            objText.TextAlignmentPoint = midPt
+            objText.InsertionPoint = midPt
+        ElseIf objText.ObjectName = "AcDbMText" Then
+            objText.AttachmentPoint = acAttachmentPointBottomCenter
+            objText.InsertionPoint = midPt
+        End If
+        
+        acadDoc.Regen acAllViewports
+ContinueLoop:
+    Loop
     Exit Sub
     
 ErrorHandler:
