@@ -96,7 +96,13 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
         ' Calculate copy distance based on the height of the source text object
         copyDistance = 1.85 * entity.Height
 
-        originalPoint = entity.InsertionPoint
+        ' Use the anchor point that matches the justification so the copied text moves relative
+        ' to the same reference (fixes Bottom Center staying in place).
+        If entity.Alignment = acAlignmentLeft Then
+            originalPoint = entity.InsertionPoint
+        Else
+            originalPoint = entity.TextAlignmentPoint
+        End If
         rotationAngle = entity.Rotation ' This is in Radians
 
         ' Calculate offset based on rotation
@@ -113,7 +119,10 @@ Public Sub TextCopier_Add(Optional ByVal layerNameParam As String = "")
         Set copiedTextObj = entity.Copy
 
         ' Modify the copied text
+        ' For non-left justifications (e.g., Bottom Center) AutoCAD uses TextAlignmentPoint
+        ' to anchor the text; setting both ensures the copy moves the expected 8mm down.
         copiedTextObj.InsertionPoint = newPoint
+        copiedTextObj.TextAlignmentPoint = newPoint
         copiedTextObj.TextString = userInputText
 
         ' Ensure the copied text is on the correct layer (Copy method should preserve it, but good to be sure)
