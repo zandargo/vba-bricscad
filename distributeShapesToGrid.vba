@@ -36,8 +36,9 @@ Public Sub DistributeShapesToGrid()
 		GoTo Cleanup
 	End If
     
+	Dim allRegions As Collection
 	Dim outerRegions As Collection
-	Set outerRegions = DetectOuterRegionsFromSelection(doc, shapeSS)
+	Set outerRegions = DetectOuterRegionsFromSelection(doc, shapeSS, allRegions)
 	If outerRegions Is Nothing Or outerRegions.Count = 0 Then
 		MsgBox "Nao foi possivel detectar regioes fechadas.", vbExclamation
 		GoTo Cleanup
@@ -60,7 +61,7 @@ Public Sub DistributeShapesToGrid()
 		Set reg = outerRegions(i)
         
 		Dim ents As Collection
-		Set ents = CollectEntitiesForRegion(reg, shapeSS)
+		Set ents = CollectEntitiesForRegion(reg, shapeSS, allRegions)
 		regionEntities.Add ents
         
 		Dim centerPt() As Double
@@ -127,7 +128,7 @@ End Sub
 ' Shape detection and grouping
 '-----------------------------
 
-Private Function DetectOuterRegionsFromSelection(doc As AcadDocument, ss As AcadSelectionSet) As Collection
+Private Function DetectOuterRegionsFromSelection(doc As AcadDocument, ss As AcadSelectionSet, ByRef allRegions As Collection) As Collection
 	Dim objs() As Object
 	ReDim objs(ss.Count - 1)
 	Dim i As Long
@@ -153,7 +154,12 @@ Private Function DetectOuterRegionsFromSelection(doc As AcadDocument, ss As Acad
 		Set regArr(idx) = r
 		idx = idx + 1
 	Next r
-    
+
+	Set allRegions = New Collection
+	For i = LBound(regArr) To UBound(regArr)
+		allRegions.Add regArr(i)
+	Next i
+
 	Set DetectOuterRegionsFromSelection = FilterOuterRegions(regArr)
 End Function
 
@@ -222,7 +228,7 @@ Private Function FilterOuterRegions(regArr() As AcadRegion) As Collection
 	Set FilterOuterRegions = result
 End Function
 
-Private Function CollectEntitiesForRegion(reg As AcadRegion, ss As AcadSelectionSet) As Collection
+Private Function CollectEntitiesForRegion(reg As AcadRegion, ss As AcadSelectionSet, allRegions As Collection) As Collection
 	Dim col As New Collection
 	Dim regMin As Variant, regMax As Variant
 	reg.GetBoundingBox regMin, regMax
@@ -248,6 +254,28 @@ Private Function CollectEntitiesForRegion(reg As AcadRegion, ss As AcadSelection
 		Err.Clear
 		On Error GoTo 0
 	Next ent
+
+	If Not allRegions Is Nothing Then
+		Dim regEnt As AcadRegion
+		For Each regEnt In allRegions
+			If regEnt Is reg Then GoTo NextReg
+			Dim rMin As Variant, rMax As Variant
+			On Error Resume Next
+			regEnt.GetBoundingBox rMin, rMax
+			If Err.Number = 0 Then
+				Dim rcx As Double, rcy As Double
+				rcx = (rMin(0) + rMax(0)) / 2
+				rcy = (rMin(1) + rMax(1)) / 2
+				If rcx >= regMin(0) - 0.01 And rcx <= regMax(0) + 0.01 And _
+				   rcy >= regMin(1) - 0.01 And rcy <= regMax(1) + 0.01 Then
+					col.Add regEnt
+				End If
+			End If
+			Err.Clear
+			On Error GoTo 0
+NextReg:
+		Next regEnt
+	End If
 	col.Add reg
 	Set CollectEntitiesForRegion = col
 End Function
