@@ -85,8 +85,9 @@ Public Sub DistributeShapesToGrid()
 	Dim cellWidth As Double, cellHeight As Double
 	Dim xGrid() As Double, yGrid() As Double
 	Dim cols As Long, rows As Long
+	Dim gridSS As AcadSelectionSet
 	Set centers = New Collection
-	If Not DetectGridFromUserSelection(centers, cellWidth, cellHeight, xGrid, yGrid, cols, rows) Then
+	If Not DetectGridFromUserSelection(centers, cellWidth, cellHeight, xGrid, yGrid, cols, rows, gridSS) Then
 		GoTo Cleanup
 	End If
     
@@ -96,18 +97,22 @@ Public Sub DistributeShapesToGrid()
 	End If
     
 	Dim scaleFactor As Double
-	scaleFactor = cellWidth / maxWidth
-    
-	For i = 1 To regionEntities.Count
-		Dim c() As Double
-		c = regionCenters(i)
-		ScaleEntities regionEntities(i), c, scaleFactor
-	Next i
+	scaleFactor = maxWidth / cellWidth
+	If scaleFactor > 0.000001 Then
+		Dim origin(0 To 2) As Double
+		origin(0) = xGrid(0): origin(1) = yGrid(0): origin(2) = 0
+		ScaleEntitiesInSelection gridSS, origin, scaleFactor
+		ScaleGridData xGrid, yGrid, origin, scaleFactor
+		cellWidth = AverageStep(xGrid)
+		cellHeight = AverageStep(yGrid)
+		RebuildCentersFromGrid xGrid, yGrid, centers
+	End If
     
 	DistributeToGrid regionEntities, centers, xGrid, yGrid, cellHeight
     
 Cleanup:
 	On Error Resume Next
+	If Not gridSS Is Nothing Then gridSS.Delete
 	shapeSS.Delete
 	doc.EndUndoMark
 	If Not formPerfisul01 Is Nothing Then formPerfisul01.Show
@@ -350,6 +355,18 @@ Private Sub ScaleEntities(ents As Collection, centerPt() As Double, scaleFactor 
 	Next ent
 End Sub
 
+Private Sub ScaleEntitiesInSelection(ss As AcadSelectionSet, origin() As Double, scaleFactor As Double)
+	If ss Is Nothing Then Exit Sub
+	If Abs(scaleFactor - 1) < 0.0001 Then Exit Sub
+	Dim ent As AcadEntity
+	For Each ent In ss
+		On Error Resume Next
+		ent.ScaleEntity origin, scaleFactor
+		Err.Clear
+		On Error GoTo 0
+	Next ent
+End Sub
+
 Private Sub GetEntitiesBounds(ents As Collection, ByRef minPt As Variant, ByRef maxPt As Variant)
 	Dim minX As Double, minY As Double, maxX As Double, maxY As Double
 	Dim first As Boolean: first = True
@@ -386,12 +403,23 @@ Private Sub MoveEntities(ents As Collection, fromPt() As Double, toPt() As Doubl
 	Next ent
 End Sub
 
+Private Sub ScaleGridData(ByRef xGrid() As Double, ByRef yGrid() As Double, origin() As Double, scaleFactor As Double)
+	Dim i As Long
+	For i = 0 To UBound(xGrid)
+		xGrid(i) = origin(0) + (xGrid(i) - origin(0)) * scaleFactor
+	Next i
+	For i = 0 To UBound(yGrid)
+		yGrid(i) = origin(1) + (yGrid(i) - origin(1)) * scaleFactor
+	Next i
+End Sub
+
 '-----------------------------
 ' Grid detection
 '-----------------------------
 
 Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWidth As Double, ByRef cellHeight As Double, _
-	ByRef xGrid() As Double, ByRef yGrid() As Double, ByRef cols As Long, ByRef rows As Long) As Boolean
+	ByRef xGrid() As Double, ByRef yGrid() As Double, ByRef cols As Long, ByRef rows As Long, _
+	ByRef gridSS As AcadSelectionSet) As Boolean
 	Dim sset As AcadSelectionSet
 	Set sset = PrepareSelectionSet(ThisDrawing, "DSG_GRID")
 	MsgBox "Selecione area cobrindo as linhas do grid e os circulos centrais."
@@ -425,6 +453,8 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
     
 	SortDoubles xArr, xCount
 	SortDoubles yArr, yCount
+	xCount = MergeCloseSorted(xArr, xCount)
+	yCount = MergeCloseSorted(yArr, yCount)
 	ReDim xGrid(0 To xCount - 1)
 	ReDim yGrid(0 To yCount - 1)
 	Dim i As Long
@@ -437,7 +467,7 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	cellHeight = AverageStep(yGrid)
     
 	BuildCenters xGrid, yGrid, centers
-	sset.Delete
+	Set gridSS = sset
 	DetectGridFromUserSelection = True
 End Function
 
@@ -452,6 +482,13 @@ Private Sub BuildCenters(xGrid() As Double, yGrid() As Double, centers As Collec
 			centers.Add pt
 		Next c
 	Next r
+End Sub
+
+Private Sub RebuildCentersFromGrid(xGrid() As Double, yGrid() As Double, centers As Collection)
+	Do While centers.Count > 0
+		centers.Remove 1
+	Loop
+	BuildCenters xGrid, yGrid, centers
 End Sub
 
 Private Function AverageStep(arr() As Double) As Double
@@ -487,6 +524,42 @@ Private Sub SortDoubles(ByRef arr() As Double, count As Long)
 	Next i
 End Sub
 
+Private Function MergeCloseSorted(ByRef arr() As Double, count As Long) As Long
+	If count <= 1 Then
+		MergeCloseSorted = count
+		Exit Function
+	End If
+	Dim minStep As Double: minStep = 0
+	Dim i As Long
+	For i = 0 To count - 2
+		Dim d As Double
+		d = Abs(arr(i + 1) - arr(i))
+		If d > 0.000001 Then
+			If minStep = 0 Or d < minStep Then minStep = d
+		End If
+	Next i
+	If minStep = 0 Then
+		MergeCloseSorted = 1
+		arr(0) = arr(0)
+		Exit Function
+	End If
+	Dim tol As Double
+	tol = minStep * 1.05
+	Dim writeIdx As Long: writeIdx = 0
+	For i = 0 To count - 1
+		If writeIdx = 0 Then
+			arr(writeIdx) = arr(i)
+			writeIdx = writeIdx + 1
+		Else
+			If Abs(arr(i) - arr(writeIdx - 1)) > tol Then
+				arr(writeIdx) = arr(i)
+				writeIdx = writeIdx + 1
+			End If
+		End If
+	Next i
+	MergeCloseSorted = writeIdx
+End Function
+
 '-----------------------------
 ' Distribution
 '-----------------------------
@@ -521,8 +594,6 @@ End Sub
 
 Private Sub AppendExtraRows(centers As Collection, xGrid() As Double, baseY As Double, cellHeight As Double, extraRows As Long)
 	Dim r As Long, c As Long
-	Dim minX As Double, maxX As Double
-	minX = xGrid(0): maxX = xGrid(UBound(xGrid))
 	For r = 1 To extraRows
 		For c = 0 To UBound(xGrid) - 1
 			Dim pt(0 To 2) As Double
