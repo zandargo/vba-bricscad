@@ -709,20 +709,19 @@ Private Sub AppendExtraRows(centers As Collection, xGrid() As Double, baseY As D
 End Sub
 
 Private Sub VisualizeGridCenters(doc As AcadDocument, centers As Collection, xGrid() As Double)
-	' Draw red text labels above each grid cell center showing grid coordinates (R##C##)
+	' Draw red points at grid cell centers with hyperlink metadata containing cell coordinates
+	On Error Resume Next
 	Dim i As Long
-	Dim pt() As Double
+	Dim pt As Variant
 	Dim cols As Long
 	Dim cellIndex As Long
 	Dim row As Long, col As Long
-	Dim textObj As AcadText
 	Dim label As String
-	Dim textPt(0 To 2) As Double
+	Dim pointObj As Object
 	
 	cols = UBound(xGrid)
 	
 	For i = 1 To centers.Count
-		On Error Resume Next
 		pt = centers(i)
 		
 		' Calculate row and column from index
@@ -733,21 +732,26 @@ Private Sub VisualizeGridCenters(doc As AcadDocument, centers As Collection, xGr
 		' Format label as R##C##
 		label = "R" & Format(row + 1, "00") & "C" & Format(col + 1, "00")
 		
-		' Position text slightly above center point
-		textPt(0) = pt(0)
-		textPt(1) = pt(1) + 5	' Offset above
-		textPt(2) = 0
+		' Create point at grid center
+		Set pointObj = doc.ModelSpace.AddPoint(pt)
 		
-		Set textObj = doc.ModelSpace.AddText(label, textPt, 3)
-		If Err.Number = 0 Then
-			textObj.Color = acRed
+		' Set color to red if supported
+		If Not pointObj Is Nothing Then
+			pointObj.Color = acRed
+			
+			' Add hyperlink metadata with cell coordinate information
+			If pointObj.Hyperlinks.Count >= 0 Then
+				pointObj.Hyperlinks.Add label
+				pointObj.Hyperlinks(1).Description = label
+			End If
 		End If
 		
 		Err.Clear
-		On Error GoTo 0
 	Next i
 	
 	doc.Application.Refresh
+	Err.Clear
+	On Error GoTo 0
 End Sub
 
 '-----------------------------
