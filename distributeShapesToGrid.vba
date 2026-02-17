@@ -32,6 +32,7 @@ Public Sub DistributeShapesToGrid()
 	Dim shapeSS As AcadSelectionSet
 	Set shapeSS = PrepareSelectionSet(doc, "DSG_SHAPES")
 	doc.Utility.Prompt vbCr & "Selecione as formas (window selection)..." & vbCr
+	MsgBox "Selecione as formas a serem distribuídas.", vbInformation, "Distribuir Formas"
 	shapeSS.SelectOnScreen
 	If shapeSS.Count = 0 Then
 		MsgBox "Nenhum objeto selecionado para distribuir.", vbExclamation, "Distribuir Formas"
