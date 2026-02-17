@@ -105,6 +105,10 @@ Public Sub DistributeShapesToGrid()
 	scalePaddingFactor = 1.1
 	Dim scaleFactor As Double
 	scaleFactor = (maxWidth / cellWidth) * scalePaddingFactor
+	
+	' Visualize grid centers BEFORE scaling (yellow points for debugging)
+	VisualizeGridCenters doc, centers, xGrid, acYellow, "Before Scaling"
+	
 	If scaleFactor > 0.000001 Then
 		Dim origin(0 To 2) As Double
 		origin(0) = xGrid(0): origin(1) = yGrid(0): origin(2) = 0
@@ -115,7 +119,8 @@ Public Sub DistributeShapesToGrid()
 		RebuildCentersFromGrid xGrid, yGrid, centers
 	End If
     
-	VisualizeGridCenters doc, centers, xGrid
+	' Visualize grid centers AFTER scaling (red points)
+	VisualizeGridCenters doc, centers, xGrid, acRed, "After Scaling"
 	DistributeToGrid regionEntities, centers, xGrid, yGrid, cellHeight
     
 Cleanup:
@@ -476,6 +481,11 @@ End Sub
 Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWidth As Double, ByRef cellHeight As Double, _
 	ByRef xGrid() As Double, ByRef yGrid() As Double, ByRef cols As Long, ByRef rows As Long, _
 	ByRef gridSS As AcadSelectionSet) As Boolean
+	
+	' Radius offset multipliers for grid corner calculation
+	Const HORIZONTAL_RADIUS_MULTIPLIER As Double = 1.2
+	Const VERTICAL_RADIUS_MULTIPLIER As Double = 1.2
+	
 	Dim sset As AcadSelectionSet
 	Set sset = PrepareSelectionSet(ThisDrawing, "DSG_GRID")
 	MsgBox "Selecione area cobrindo as linhas do grid e os circulos centrais."
@@ -487,6 +497,12 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	ReDim yArr(0 To 200)
 	Dim xCount As Long, yCount As Long
 	xCount = 0: yCount = 0
+	
+	' Find circles to determine grid extent
+	Dim circles As Collection
+	Set circles = New Collection
+	Dim circleRadii As Collection
+	Set circleRadii = New Collection
     
 	Dim ent As AcadEntity
 	For Each ent In sset
@@ -498,6 +514,13 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 			ex = ln.EndPoint(0): ey = ln.EndPoint(1)
 			If Abs(sx - ex) < 0.1 Then AddUniqueVal xArr, xCount, (sx + ex) / 2
 			If Abs(sy - ey) < 0.1 Then AddUniqueVal yArr, yCount, (sy + ey) / 2
+		ElseIf ent.ObjectName = "AcDbCircle" Then
+			Dim circ As AcadCircle
+			Set circ = ent
+			Dim circCenter As Variant
+			circCenter = circ.center
+			circles.Add circCenter
+			circleRadii.Add circ.radius
 		End If
 	Next ent
     
@@ -511,14 +534,90 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	SortDoubles yArr, yCount
 	xCount = MergeCloseSorted(xArr, xCount)
 	yCount = MergeCloseSorted(yArr, yCount)
+	
+	' If circles were found, use them to determine grid extent
+	If circles.Count > 0 Then
+		' Sort circles by Y (descending, top to bottom) then by X (ascending, left to right)
+		Dim i As Long, j As Long
+		Dim sortedCircles As Collection
+		Dim sortedRadii As Collection
+		Set sortedCircles = New Collection
+		Set sortedRadii = New Collection
+		
+		' Simple bubble sort by Y descending, then X ascending
+		Dim circArray() As Variant
+		ReDim circArray(1 To circles.Count)
+		Dim radArray() As Double
+		ReDim radArray(1 To circles.Count)
+		
+		For i = 1 To circles.Count
+			circArray(i) = circles(i)
+			radArray(i) = circleRadii(i)
+		Next i
+		
+		Dim swapped As Boolean
+		For i = 1 To circles.Count - 1
+			swapped = False
+			For j = 1 To circles.Count - i
+				Dim y1 As Double, y2 As Double, x1 As Double, x2 As Double
+				y1 = CDbl(circArray(j)(1))
+				y2 = CDbl(circArray(j + 1)(1))
+				x1 = CDbl(circArray(j)(0))
+				x2 = CDbl(circArray(j + 1)(0))
+				
+				If y1 < y2 Or (Abs(y1 - y2) < 0.1 And x1 > x2) Then
+					Dim tmpArr As Variant
+					Dim tmpRad As Double
+					tmpArr = circArray(j)
+					tmpRad = radArray(j)
+					circArray(j) = circArray(j + 1)
+					radArray(j) = radArray(j + 1)
+					circArray(j + 1) = tmpArr
+					radArray(j + 1) = tmpRad
+					swapped = True
+				End If
+			Next j
+			If Not swapped Then Exit For
+		Next i
+		
+		' Find the rightmost circle in the first row
+		Dim firstRowY As Double
+		firstRowY = CDbl(circArray(1)(1))
+		Dim lastCircleInFirstRow As Variant
+		Dim lastRadiusInFirstRow As Double
+		Dim circleCount As Long: circleCount = 0
+		
+		For i = 1 To circles.Count
+			If Abs(CDbl(circArray(i)(1)) - firstRowY) < 0.1 Then
+				lastCircleInFirstRow = circArray(i)
+				lastRadiusInFirstRow = radArray(i)
+				circleCount = i
+			Else
+				Exit For
+			End If
+		Next i
+		
+		' Calculate grid extent from the last circle in first row
+		Dim topRightX As Double, topRightY As Double
+		topRightX = CDbl(lastCircleInFirstRow(0)) + lastRadiusInFirstRow * HORIZONTAL_RADIUS_MULTIPLIER
+		topRightY = CDbl(lastCircleInFirstRow(1)) + lastRadiusInFirstRow * VERTICAL_RADIUS_MULTIPLIER
+		
+		' Adjust grid arrays to match circle positions
+		' xArr should represent the column lines
+		' yArr should represent the row lines
+		' Use the circles themselves to refine the grid
+		cols = circleCount - 1
+		rows = circles.Count \ circleCount - 1
+	End If
+	
 	ReDim xGrid(0 To xCount - 1)
 	ReDim yGrid(0 To yCount - 1)
-	Dim i As Long
-	For i = 0 To xCount - 1: xGrid(i) = xArr(i): Next i
-	For i = 0 To yCount - 1: yGrid(i) = yArr(i): Next i
+	Dim k As Long
+	For k = 0 To xCount - 1: xGrid(k) = xArr(k): Next k
+	For k = 0 To yCount - 1: yGrid(k) = yArr(k): Next k
     
-	cols = xCount - 1
-	rows = yCount - 1
+	If cols = 0 Then cols = xCount - 1
+	If rows = 0 Then rows = yCount - 1
 	cellWidth = AverageStep(xGrid)
 	cellHeight = AverageStep(yGrid)
     
@@ -708,8 +807,10 @@ Private Sub AppendExtraRows(centers As Collection, xGrid() As Double, baseY As D
 	Next r
 End Sub
 
-Private Sub VisualizeGridCenters(doc As AcadDocument, centers As Collection, xGrid() As Double)
-	' Draw red points at grid cell centers with hyperlink metadata containing cell coordinates
+Private Sub VisualizeGridCenters(doc As AcadDocument, centers As Collection, xGrid() As Double, Optional pointColor As Long = acRed, Optional debugLabel As String = "")
+	' Draw points at grid cell centers with hyperlink metadata containing cell coordinates
+	' pointColor: color for the points (default acRed)
+	' debugLabel: optional label prefix for hyperlink descriptions (e.g., "Before Scaling", "After Scaling")
 	On Error Resume Next
 	Dim i As Long
 	Dim pt As Variant
@@ -717,6 +818,7 @@ Private Sub VisualizeGridCenters(doc As AcadDocument, centers As Collection, xGr
 	Dim cellIndex As Long
 	Dim row As Long, col As Long
 	Dim label As String
+	Dim hyperLabel As String
 	Dim pointObj As Object
 	
 	cols = UBound(xGrid)
@@ -732,17 +834,24 @@ Private Sub VisualizeGridCenters(doc As AcadDocument, centers As Collection, xGr
 		' Format label as R##C##
 		label = "R" & Format(row + 1, "00") & "C" & Format(col + 1, "00")
 		
+		' Include debug label in hyperlink description if provided
+		If debugLabel <> "" Then
+			hyperLabel = debugLabel & " - " & label
+		Else
+			hyperLabel = label
+		End If
+		
 		' Create point at grid center
 		Set pointObj = doc.ModelSpace.AddPoint(pt)
 		
-		' Set color to red if supported
+		' Set color and add hyperlink metadata
 		If Not pointObj Is Nothing Then
-			pointObj.Color = acRed
+			pointObj.Color = pointColor
 			
 			' Add hyperlink metadata with cell coordinate information
 			If pointObj.Hyperlinks.Count >= 0 Then
-				pointObj.Hyperlinks.Add label
-				pointObj.Hyperlinks(1).Description = label
+				pointObj.Hyperlinks.Add hyperLabel
+				pointObj.Hyperlinks(1).Description = hyperLabel
 			End If
 		End If
 		
