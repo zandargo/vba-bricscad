@@ -26,6 +26,8 @@ Public Sub DistributeShapesToGrid()
 	Dim doc As AcadDocument
 	Set doc = ThisDrawing
 	doc.StartUndoMark
+	Dim shapesLayer As AcadLayer
+	Set shapesLayer = EnsureShapesLayer(doc)
     
 	Dim shapeSS As AcadSelectionSet
 	Set shapeSS = PrepareSelectionSet(doc, "DSG_SHAPES")
@@ -154,6 +156,16 @@ Private Function DetectOuterRegionsFromSelection(doc As AcadDocument, ss As Acad
 		Set regArr(idx) = r
 		idx = idx + 1
 	Next r
+
+	Dim shapesLayer As AcadLayer
+	Set shapesLayer = EnsureShapesLayer(doc)
+	For i = LBound(regArr) To UBound(regArr)
+		On Error Resume Next
+		regArr(i).Layer = "Shapes"
+		regArr(i).Color = acByLayer
+		Err.Clear
+		On Error GoTo 0
+	Next i
 
 	Set allRegions = New Collection
 	For i = LBound(regArr) To UBound(regArr)
@@ -788,4 +800,17 @@ Private Function PrepareSelectionSet(doc As AcadDocument, name As String) As Aca
 	End If
 	On Error GoTo 0
 	Set PrepareSelectionSet = ss
+End Function
+
+Private Function EnsureShapesLayer(doc As AcadDocument) As AcadLayer
+	Dim shapesLayer As AcadLayer
+	On Error Resume Next
+	Set shapesLayer = doc.Layers.Item("Shapes")
+	If Err.Number <> 0 Then
+		Err.Clear
+		Set shapesLayer = doc.Layers.Add("Shapes")
+		shapesLayer.Color = acGreen
+	End If
+	On Error GoTo 0
+	Set EnsureShapesLayer = shapesLayer
 End Function
