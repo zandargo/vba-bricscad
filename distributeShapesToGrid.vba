@@ -581,6 +581,7 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	If circles.Count > 0 Then
 		' Sort circles by Y (descending, top to bottom) then by X (ascending, left to right)
 		Dim i As Long, j As Long
+		Dim circleWidth As Double
 		Dim sortedCircles As Collection
 		Dim sortedRadii As Collection
 		Set sortedCircles = New Collection
@@ -638,6 +639,15 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 				Exit For
 			End If
 		Next i
+
+		' Horizontal cell width derived from mean X offset between first-row circles
+		If circleCount >= 2 Then
+			Dim widthSum As Double
+			For i = 1 To circleCount - 1
+				widthSum = widthSum + (CDbl(circArray(i + 1)(0)) - CDbl(circArray(i)(0)))
+			Next i
+			circleWidth = widthSum / (circleCount - 1)
+		End If
 		
 		' Calculate grid extent from the last circle in first row
 		topRightX = CDbl(lastCircleInFirstRow(0)) + lastRadiusInFirstRow * HORIZONTAL_RADIUS_MULTIPLIER
@@ -663,6 +673,17 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	Dim k As Long
 	For k = 0 To xCount - 1: xGrid(k) = xArr(k): Next k
 	For k = 0 To yCount - 1: yGrid(k) = yArr(k): Next k
+
+	' Override X grid using circle-based width so column centers follow reference circles
+	If circleWidth > 0 And circleCount > 0 Then
+		xCount = circleCount + 1
+		ReDim xGrid(0 To xCount - 1)
+		Dim leftEdge As Double
+		leftEdge = CDbl(circArray(1)(0)) + HORIZONTAL_RADIUS_MULTIPLIER * radArray(1) - circleWidth
+		For k = 0 To xCount - 1
+			xGrid(k) = leftEdge + circleWidth * k
+		Next k
+	End If
     
 	If cols = 0 Then cols = xCount - 1
 	If rows = 0 Then rows = yCount - 1
