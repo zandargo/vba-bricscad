@@ -412,18 +412,25 @@ Private Sub ScaleEntitiesInSelection(ss As AcadSelectionSet, origin() As Double,
 End Sub
 
 Private Sub GetEntitiesBounds(ents As Collection, ByRef minPt As Variant, ByRef maxPt As Variant)
+	' Calculate the bounding box encompassing all entities in the collection
 	Dim minX As Double, minY As Double, maxX As Double, maxY As Double
 	Dim first As Boolean: first = True
+	
 	Dim ent As AcadEntity
 	Dim eMin As Variant, eMax As Variant
+	
+	' Iterate through each entity to find overall min/max coordinates
 	For Each ent In ents
 		On Error Resume Next
+		' Get individual entity's bounding box
 		ent.GetBoundingBox eMin, eMax
 		If Err.Number = 0 Then
+			' On first entity, initialize bounds
 			If first Then
 				minX = eMin(0): minY = eMin(1): maxX = eMax(0): maxY = eMax(1)
 				first = False
 			Else
+				' On subsequent entities, expand bounds if needed
 				If eMin(0) < minX Then minX = eMin(0)
 				If eMin(1) < minY Then minY = eMin(1)
 				If eMax(0) > maxX Then maxX = eMax(0)
@@ -433,14 +440,18 @@ Private Sub GetEntitiesBounds(ents As Collection, ByRef minPt As Variant, ByRef 
 		Err.Clear
 		On Error GoTo 0
 	Next ent
+	
+	' Return bounding box as [minX, minY, Z] and [maxX, maxY, Z]
 	minPt = Array(minX, minY, 0)
 	maxPt = Array(maxX, maxY, 0)
 End Sub
 
 Private Sub MoveEntities(ents As Collection, fromPt() As Double, toPt() As Double)
+	' Move all entities from one point to another
 	Dim ent As AcadEntity
 	For Each ent In ents
 		On Error Resume Next
+		' Move the entity: calculates translation vector and applies to all geometry
 		ent.Move fromPt, toPt
 		Err.Clear
 		On Error GoTo 0
@@ -516,19 +527,34 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 End Function
 
 Private Sub BuildCenters(xGrid() As Double, yGrid() As Double, centers As Collection)
+	' Generate center points for all grid cells by iterating rows and columns
 	Dim r As Long, c As Long
+	
+	' Iterate rows from top to bottom (reverse order: highest Y first)
 	For r = UBound(yGrid) - 1 To 0 Step -1
+		' Iterate columns from left to right
 		For c = 0 To UBound(xGrid) - 1
+			' Create center point for this cell
 			Dim pt(0 To 2) As Double
+			
+			' Horizontal center: midpoint between adjacent X grid lines
 			pt(0) = (xGrid(c) + xGrid(c + 1)) / 2
+			
+			' Vertical center: midpoint between adjacent Y grid lines
 			pt(1) = (yGrid(r) + yGrid(r + 1)) / 2
+			
+			' Z coordinate (depth)
 			pt(2) = 0
+			
+			' Add this cell center to collection
 			centers.Add pt
 		Next c
 	Next r
 End Sub
 
 Private Sub RebuildCentersFromGrid(xGrid() As Double, yGrid() As Double, centers As Collection)
+	' Clear existing centers and rebuild from current grid state
+	' This is used after scaling the grid to recalculate all cell centers
 	Do While centers.Count > 0
 		centers.Remove 1
 	Loop
@@ -609,41 +635,73 @@ End Function
 '-----------------------------
 
 Private Sub DistributeToGrid(regionEntities As Collection, centers As Collection, xGrid() As Double, yGrid() As Double, cellHeight As Double)
+	' Vertical positioning fine-tuning: adjust this offset to move all extra rows up/down
+	' Positive value = move down, Negative value = move up
+	Const VERTICAL_OFFSET As Double = 0
+	
+	' Calculate if additional rows are needed beyond the initial grid
 	Dim totalCells As Long
 	totalCells = centers.Count
 	Dim need As Long
 	need = regionEntities.Count - totalCells
 	Dim extraRows As Long
+	
+	' If there are more shapes than grid cells, create additional rows below the grid
 	If need > 0 Then
 		Dim cols As Long
 		cols = UBound(xGrid)
 		extraRows = (need + cols - 1) \ cols
-		AppendExtraRows centers, xGrid, yGrid(0), cellHeight, extraRows
+		AppendExtraRows centers, xGrid, yGrid(0), cellHeight, extraRows, VERTICAL_OFFSET
 	End If
     
+	' Move each shape to its assigned grid cell center
 	Dim i As Long
 	For i = 1 To regionEntities.Count
+		' Check if we have a corresponding center point for this shape
 		If i > centers.Count Then Exit For
+		
+		' Get target center point from grid
 		Dim tgt() As Double
 		tgt = centers(i)
+		
+		' Calculate current geometric center of the shape from its bounding box
 		Dim minPt As Variant, maxPt As Variant
 		GetEntitiesBounds regionEntities(i), minPt, maxPt
+		
+		' Extract current center X and Y coordinates
 		Dim curr(0 To 2) As Double
 		curr(0) = (minPt(0) + maxPt(0)) / 2
 		curr(1) = (minPt(1) + maxPt(1)) / 2
 		curr(2) = 0
+		
+		' Move shape from current center to target grid cell center
 		MoveEntities regionEntities(i), curr, tgt
 	Next i
 End Sub
 
-Private Sub AppendExtraRows(centers As Collection, xGrid() As Double, baseY As Double, cellHeight As Double, extraRows As Long)
+Private Sub AppendExtraRows(centers As Collection, xGrid() As Double, baseY As Double, cellHeight As Double, extraRows As Long, Optional verticalOffset As Double = 0)
+	' Generate center points for additional grid rows needed beyond the initial grid
 	Dim r As Long, c As Long
+	
+	' For each extra row to be created
 	For r = 1 To extraRows
+		' For each column in the grid
 		For c = 0 To UBound(xGrid) - 1
+			' Create a new center point for this row/column intersection
 			Dim pt(0 To 2) As Double
+			
+			' Horizontal: center of the cell width
 			pt(0) = (xGrid(c) + xGrid(c + 1)) / 2
-			pt(1) = baseY - (cellHeight * r) + (cellHeight / 2)
+			
+			' Vertical: position below the base grid by (r * cellHeight) with offset to cell center
+			' Fine-tuned formula: baseY - (cellHeight * r) + (cellHeight / 2) + verticalOffset
+			' verticalOffset allows adjustment of all extra rows relative to base grid
+			pt(1) = baseY - (cellHeight * r) + (cellHeight / 2) + verticalOffset
+			
+			' Z coordinate (depth)
 			pt(2) = 0
+			
+			' Add this center point to the collection
 			centers.Add pt
 		Next c
 	Next r
