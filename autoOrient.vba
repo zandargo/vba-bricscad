@@ -177,6 +177,8 @@ Private Function CollectSamplingPoints(ss As AcadSelectionSet, centerPt() As Dou
         ' For Polylines, explode to get accurate geometry (lines and arcs)
         If InStr(1, objName, "POLYLINE", vbTextCompare) > 0 Then
             CollectPolylinePoints ent, centerPt, pointsOut, count
+        ElseIf InStr(1, objName, "REGION", vbTextCompare) > 0 Then
+            CollectRegionPoints ent, centerPt, pointsOut, count
         ElseIf objName = "ACDBLINE" Or objName = "ACADLINE" Then
             CollectLinePoints ent, centerPt, pointsOut, count
         ElseIf objName = "ACDBARC" Or objName = "ACADARC" Then
@@ -197,6 +199,47 @@ Private Sub AddPoint(x As Double, y As Double, ByRef points() As Point2D, ByRef 
     points(count).x = x
     points(count).y = y
     count = count + 1
+End Sub
+
+Private Sub CollectRegionPoints(ent As AcadEntity, centerPt() As Double, ByRef points() As Point2D, ByRef count As Long)
+    On Error Resume Next
+    Dim exploded As Variant
+    exploded = ent.Explode
+    
+    If Err.Number <> 0 Or IsEmpty(exploded) Then
+        Err.Clear
+        CollectBoundingBoxPoints ent, centerPt, points, count
+        Exit Sub
+    End If
+    
+    Dim i As Long
+    Dim subEnt As AcadEntity
+    ' For regions, sometimes Explode returns a Region again (if complex) or the boundary curves.
+    ' If it's a set of lines/arcs, we process them.
+    ' If it's just a Region, likely identical, we must avoid infinite recursion.
+    ' We iterate and check types.
+    For i = LBound(exploded) To UBound(exploded)
+        Set subEnt = exploded(i)
+        Dim subName As String
+        subName = UCase$(subEnt.ObjectName)
+        
+        If InStr(1, subName, "REGION", vbTextCompare) > 0 Then
+            ' If explode returned another region, try exploding THAT one level deeper
+            ' Often regions explode into 1 region if created from closed loop?
+            ' Actually, Exploding a Region should yield Lines/Arcs/Splines.
+            ' But just in case, use centroid/bbox for sub-region to be safe
+            CollectBoundingBoxPoints subEnt, centerPt, points, count
+        ElseIf InStr(1, subName, "LINE", vbTextCompare) > 0 Then
+            CollectLinePoints subEnt, centerPt, points, count
+        ElseIf InStr(1, subName, "ARC", vbTextCompare) > 0 Then
+            CollectArcPoints subEnt, centerPt, points, count
+        Else
+            CollectBoundingBoxPoints subEnt, centerPt, points, count
+        End If
+        
+        subEnt.Delete
+    Next i
+    On Error GoTo 0
 End Sub
 
 Private Sub CollectPolylinePoints(ent As AcadEntity, centerPt() As Double, ByRef points() As Point2D, ByRef count As Long)
@@ -273,6 +316,105 @@ Private Sub CollectArcPoints(arcEnt As AcadEntity, centerPt() As Double, ByRef p
     midY = center(1) + radius * Sin(midAngle)
     
     AddPoint midX - centerPt(0), midY - centerPt(1), points, count
+    On Error GoTo 0
+End Sub
+
+Private Sub CollectSplinePoints(splineEnt As AcadEntity, centerPt() As Double, ByRef points() As Point2D, ByRef count As Long)
+    On Error Resume Next
+    Dim ctrlPoints As Variant
+    Dim numPoints As Long
+    Dim i As Long
+    
+    ' Try to get control points
+    ctrlPoints = splineEnt.ControlPoints
+    If Err.Number = 0 And Not IsEmpty(ctrlPoints) Then
+        numPoints = (UBound(ctrlPoints) - LBound(ctrlPoints) + 1) / 3
+        For i = 0 To numPoints - 1
+            AddPoint ctrlPoints(i * 3) - centerPt(0), ctrlPoints(i * 3 + 1) - centerPt(1), points, count
+        Next i
+    Else
+        Err.Clear
+        ' Fallback to fit points if control points fail
+        Dim fitPoints As Variant
+        fitPoints = splineEnt.FitPoints
+        if Err.Number = 0 And Not IsEmpty(fitPoints) Then
+             numPoints = (UBound(fitPoints) - LBound(fitPoints) + 1) / 3
+             For i = 0 To numPoints - 1
+                 AddPoint fitPoints(i * 3) - centerPt(0), fitPoints(i * 3 + 1) - centerPt(1), points, count
+             Next i
+        Else
+             CollectBoundingBoxPoints splineEnt, centerPt, points, count
+        End If
+    End If
+    On Error GoTo 0
+End Sub
+
+Private Sub CollectEllipsePoints(ell As AcadEntity, centerPt() As Double, ByRef points() As Point2D, ByRef count As Long)
+    On Error Resume Next
+    Dim center As Variant
+    Dim majAxis As Variant
+    Dim radiusRatio As Double
+    Dim startAngle As Double, endAngle As Double
+    
+    center = ell.center
+    majAxis = ell.MajorAxis
+    radiusRatio = ell.RadiusRatio
+    startAngle = ell.startAngle
+    endAngle = ell.endAngle
+    
+    ' Add Start/End/Center
+    Dim startPt As Variant, endPt As Variant
+    startPt = ell.StartPoint
+    endPt = ell.EndPoint
+    
+    AddPoint startPt(0) - centerPt(0), startPt(1) - centerPt(1), points, count
+    AddPoint endPt(0) - centerPt(0), endPt(1) - centerPt(1), points, count
+    
+    ' Approximate the curve with 8 points along the perimeter
+    Dim i As Long
+    Dim t As Double
+    Dim angleSpan As Double
+    
+    If endAngle < startAngle Then endAngle = endAngle + 6.28318530717959
+    angleSpan = endAngle - startAngle
+    
+    ' Major axis length
+    Dim majLen As Double
+    majLen = Sqr(majAxis(0) ^ 2 + majAxis(1) ^ 2)
+    
+    ' Minor axis length
+    Dim minLen As Double
+    minLen = majLen * radiusRatio
+    
+    ' Angle of major axis
+    Dim rotAngle As Double
+    If majLen > 0.000001 Then
+        rotAngle = Atn(majAxis(1) / majAxis(0))
+        ' Quadrant fix
+        If majAxis(0) < 0 Then rotAngle = rotAngle + 3.14159265358979
+    Else
+        rotAngle = 0
+    End If
+    
+    Dim cosR As Double: cosR = Cos(rotAngle)
+    Dim sinR As Double: sinR = Sin(rotAngle)
+    
+    For i = 1 To 7
+        t = startAngle + (angleSpan * i / 8)
+        
+        ' Parametric ellipse equation
+        Dim pX As Double, pY As Double
+        pX = majLen * Cos(t)
+        pY = minLen * Sin(t)
+        
+        ' Rotate to align with major axis
+        Dim finalX As Double, finalY As Double
+        finalX = center(0) + (pX * cosR - pY * sinR)
+        finalY = center(1) + (pX * sinR + pY * cosR)
+        
+        AddPoint finalX - centerPt(0), finalY - centerPt(1), points, count
+    Next i
+    
     On Error GoTo 0
 End Sub
 
