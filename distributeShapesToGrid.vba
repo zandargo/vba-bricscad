@@ -34,7 +34,7 @@ Public Sub DistributeShapesToGrid()
 	doc.Utility.Prompt vbCr & "Selecione as formas (window selection)..." & vbCr
 	shapeSS.SelectOnScreen
 	If shapeSS.Count = 0 Then
-		MsgBox "Nenhum objeto selecionado para distribuir.", vbExclamation
+		MsgBox "Nenhum objeto selecionado para distribuir.", vbExclamation, "Distribuir Formas"
 		GoTo Cleanup
 	End If
 	NormalizeSelectedLayers shapeSS
@@ -43,7 +43,7 @@ Public Sub DistributeShapesToGrid()
 	Dim outerRegions As Collection
 	Set outerRegions = DetectOuterRegionsFromSelection(doc, shapeSS, allRegions)
 	If outerRegions Is Nothing Or outerRegions.Count = 0 Then
-		MsgBox "Nao foi possivel detectar regioes fechadas.", vbExclamation
+		MsgBox "Não foi possível detectar regiões fechadas.", vbExclamation, "Distribuir Formas"
 		GoTo Cleanup
 	End If
     
@@ -102,7 +102,7 @@ Public Sub DistributeShapesToGrid()
 	End If
     
 	If maxWidth <= 0 Or cellWidth <= 0 Then
-		MsgBox "Falha ao calcular larguras.", vbExclamation
+		MsgBox "Falha ao calcular larguras.", vbExclamation, "Distribuir Formas"
 		GoTo Cleanup
 	End If
     
@@ -143,7 +143,7 @@ Cleanup:
 	Exit Sub
     
 ErrHandler:
-	MsgBox "Erro: " & Err.Description, vbCritical
+	MsgBox "Erro: " & Err.Description, vbCritical, "Distribuir Formas"
 	Resume Cleanup
 End Sub
 
@@ -529,7 +529,7 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	
 	Dim sset As AcadSelectionSet
 	Set sset = PrepareSelectionSet(ThisDrawing, "DSG_GRID")
-	MsgBox "Selecione area cobrindo as linhas do grid e os circulos centrais."
+	MsgBox "Selecione a área cobrindo as linhas da grade.", vbInformation, "Distribuir Formas"
 	sset.SelectOnScreen
 	If sset.Count = 0 Then Exit Function
     
@@ -566,7 +566,7 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	Next ent
     
 	If xCount < 2 Or yCount < 2 Then
-		MsgBox "Grid invalido. Verticais: " & xCount & " horizontais: " & yCount
+		MsgBox "Grade inválida. Verticais: " & xCount & " horizontais: " & yCount, vbExclamation, "Distribuir Formas"
 		sset.Delete
 		Exit Function
 	End If
