@@ -133,7 +133,16 @@ Public Sub DetectOuterShapes()
     Dim copyContainer As AcadRegion
     Dim intersectionReg As AcadRegion
     
+    ' Track which regions to delete (inner ones)
+    ' We valid flags to avoid accessing deleted objects
+    Dim regionsToDelete() As Boolean
+    ReDim regionsToDelete(UBound(regionList))
+    
     doc.Utility.Prompt "Analyzing " & rCount & " detected regions..." & vbCrLf
+    
+    For i = 0 To UBound(regionList)
+        regionsToDelete(i) = False
+    Next i
     
     For i = 0 To UBound(regionList)
         Set testReg = regionList(i)
@@ -142,13 +151,15 @@ Public Sub DetectOuterShapes()
         ' Compare against other regions to see if 'testReg' is inside 'containerReg'
         For k = 0 To UBound(regionList)
             If i <> k Then
+                ' Optimization: If container is already marked as inner, 
+                ' can it still contain others? Yes, nesting (A > B > C).
+                ' If B is inside A, B is marked to delete.
+                ' C is inside B. We check C vs B. B is still a valid object until we delete it later.
+                ' Comparison is safe.
+                
                 Set containerReg = regionList(k)
                 
                 ' Only check if container is larger (or equal)
-                ' Since we sorted descending, effectively we only check k < i?
-                ' Actually, Equal areas are tricky (duplicate regions).
-                ' If k < i, Area(k) >= Area(i).
-                ' If Area(k) < Area(i), it cannot contain i.
                 If containerReg.Area >= testReg.Area Then
                      
                     ' Check containment: Intersection(Test, Container) == Test
@@ -188,21 +199,31 @@ Public Sub DetectOuterShapes()
             End If
         Next k
         
-        If Not isInner Then
+        If isInner Then
+            ' Mark it as a child / hole
+            regionsToDelete(i) = True
+        Else
             ' It is a Parent / Outer Shape
-            ' Highlight the upper-level/parent loops INSIDE selection.
+            ' Start highlighting process but don't delete yet
+        End If
+    Next i
+    
+    ' Now process results
+    For i = 0 To UBound(regionList)
+        If regionsToDelete(i) Then
+            ' It was inner - delete it
+             On Error Resume Next
+             regionList(i).Delete
+             On Error GoTo 0
+        Else
+            ' It is a Parent / Outer Shape
+            Set testReg = regionList(i)
             testReg.Layer = "Shapes"
             testReg.Color = acByLayer
             On Error Resume Next
             testReg.Linetype = "Continuous"
             On Error GoTo 0
             testReg.Highlight False
-        Else
-            ' It is an inner loop / hole
-            ' Delete the generated region to keep drawing clean?
-            ' Or keep it? "Highlight parent" implies emphasizing them.
-            ' Deleting non-parents makes it clearer.
-            testReg.Delete
         End If
     Next i
     
