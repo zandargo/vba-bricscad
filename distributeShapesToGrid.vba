@@ -115,6 +115,7 @@ Public Sub DistributeShapesToGrid()
 		RebuildCentersFromGrid xGrid, yGrid, centers
 	End If
     
+	VisualizeGridCenters doc, centers, xGrid
 	DistributeToGrid regionEntities, centers, xGrid, yGrid, cellHeight
     
 Cleanup:
@@ -705,6 +706,48 @@ Private Sub AppendExtraRows(centers As Collection, xGrid() As Double, baseY As D
 			centers.Add pt
 		Next c
 	Next r
+End Sub
+
+Private Sub VisualizeGridCenters(doc As AcadDocument, centers As Collection, xGrid() As Double)
+	' Draw red text labels above each grid cell center showing grid coordinates (R##C##)
+	Dim i As Long
+	Dim pt() As Double
+	Dim cols As Long
+	Dim cellIndex As Long
+	Dim row As Long, col As Long
+	Dim textObj As AcadText
+	Dim label As String
+	Dim textPt(0 To 2) As Double
+	
+	cols = UBound(xGrid)
+	
+	For i = 1 To centers.Count
+		On Error Resume Next
+		pt = centers(i)
+		
+		' Calculate row and column from index
+		cellIndex = i - 1
+		row = cellIndex \ cols
+		col = cellIndex Mod cols
+		
+		' Format label as R##C##
+		label = "R" & Format(row + 1, "00") & "C" & Format(col + 1, "00")
+		
+		' Position text slightly above center point
+		textPt(0) = pt(0)
+		textPt(1) = pt(1) + 5	' Offset above
+		textPt(2) = 0
+		
+		Set textObj = doc.ModelSpace.AddText(label, textPt, 3)
+		If Err.Number = 0 Then
+			textObj.Color = acRed
+		End If
+		
+		Err.Clear
+		On Error GoTo 0
+	Next i
+	
+	doc.Application.Refresh
 End Sub
 
 '-----------------------------
