@@ -100,8 +100,11 @@ Public Sub DistributeShapesToGrid()
 		GoTo Cleanup
 	End If
     
+	' Padding factor to leave extra room inside each cell; adjust to fine-tune fit.
+	Dim scalePaddingFactor As Double
+	scalePaddingFactor = 1.1
 	Dim scaleFactor As Double
-	scaleFactor = maxWidth / cellWidth
+	scaleFactor = (maxWidth / cellWidth) * scalePaddingFactor
 	If scaleFactor > 0.000001 Then
 		Dim origin(0 To 2) As Double
 		origin(0) = xGrid(0): origin(1) = yGrid(0): origin(2) = 0
