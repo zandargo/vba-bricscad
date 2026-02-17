@@ -107,7 +107,7 @@ Public Sub DistributeShapesToGrid()
 	scaleFactor = (maxWidth / cellWidth) * scalePaddingFactor
 	
 	' Visualize grid centers BEFORE scaling (yellow points for debugging)
-	VisualizeGridCenters doc, centers, xGrid, acYellow, "Before Scaling"
+	'VisualizeGridCenters doc, centers, xGrid, acYellow, "Before Scaling"
 	
 	If scaleFactor > 0.000001 Then
 		Dim origin(0 To 2) As Double
@@ -124,7 +124,7 @@ Public Sub DistributeShapesToGrid()
 	End If
     
 	' Visualize grid centers AFTER scaling (red points)
-	VisualizeGridCenters doc, centers, xGrid, acRed, "After Scaling"
+	'VisualizeGridCenters doc, centers, xGrid, acRed, "After Scaling"
 	DistributeToGrid regionEntities, centers, xGrid, yGrid, cellHeight
     
 Cleanup:
@@ -516,6 +516,9 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	' Radius offset multipliers for grid corner calculation
 	Const HORIZONTAL_RADIUS_MULTIPLIER As Double = 1.2
 	Const VERTICAL_RADIUS_MULTIPLIER As Double = 1.2
+
+	Dim hasTopRightCorner As Boolean
+	Dim topRightX As Double, topRightY As Double
 	
 	Dim sset As AcadSelectionSet
 	Set sset = PrepareSelectionSet(ThisDrawing, "DSG_GRID")
@@ -629,9 +632,9 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 		Next i
 		
 		' Calculate grid extent from the last circle in first row
-		Dim topRightX As Double, topRightY As Double
 		topRightX = CDbl(lastCircleInFirstRow(0)) + lastRadiusInFirstRow * HORIZONTAL_RADIUS_MULTIPLIER
 		topRightY = CDbl(lastCircleInFirstRow(1)) + lastRadiusInFirstRow * VERTICAL_RADIUS_MULTIPLIER
+		hasTopRightCorner = True
 
 		' Derive vertical cell height from first circle in first and second rows
 		Dim circleHeightStep As Double
@@ -660,6 +663,12 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 
 	' If we obtained a circle-based vertical step, prefer it for consistent row spacing
 	If circleHeightStep > 0.000001 Then cellHeight = circleHeightStep
+
+	' Anchor top-right corner from the last circle in first row (circle-based extents)
+	If hasTopRightCorner Then
+		If yCount > 0 Then yGrid(yCount - 1) = topRightY
+		If xCount > 0 Then xGrid(xCount - 1) = topRightX
+	End If
 
 	' Normalize all Y grid lines to be equally spaced so every row step equals the averaged cellHeight
 	If yCount >= 2 Then
