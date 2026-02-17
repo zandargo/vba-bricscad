@@ -601,6 +601,12 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 		Dim topRightX As Double, topRightY As Double
 		topRightX = CDbl(lastCircleInFirstRow(0)) + lastRadiusInFirstRow * HORIZONTAL_RADIUS_MULTIPLIER
 		topRightY = CDbl(lastCircleInFirstRow(1)) + lastRadiusInFirstRow * VERTICAL_RADIUS_MULTIPLIER
+
+		' Derive vertical cell height from first circle in first and second rows
+		Dim circleHeightStep As Double
+		If circles.Count >= circleCount + 1 And circleCount > 0 Then
+			circleHeightStep = Abs(CDbl(circArray(1)(1)) - CDbl(circArray(circleCount + 1)(1)))
+		End If
 		
 		' Adjust grid arrays to match circle positions
 		' xArr should represent the column lines
@@ -620,6 +626,9 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	If rows = 0 Then rows = yCount - 1
 	cellWidth = AverageStep(xGrid)
 	cellHeight = AverageStep(yGrid)
+
+	' If we obtained a circle-based vertical step, prefer it for consistent row spacing
+	If circleHeightStep > 0.000001 Then cellHeight = circleHeightStep
 
 	' Normalize all Y grid lines to be equally spaced so every row step equals the averaged cellHeight
 	If yCount >= 2 Then
