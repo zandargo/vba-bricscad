@@ -114,7 +114,7 @@ Public Sub DistributeShapesToGrid()
 	scaleFactor = (maxWidth / cellWidth) * scalePaddingFactor
 	
 	' Visualize grid centers BEFORE scaling (yellow points for debugging)
-	'VisualizeGridCenters doc, centers, xGrid, acYellow, "Before Scaling"
+	VisualizeGridCenters doc, centers, xGrid, acYellow, "Antes da Escala"
 	
 	If scaleFactor > 0.000001 Then
 		Dim origin(0 To 2) As Double
@@ -131,7 +131,7 @@ Public Sub DistributeShapesToGrid()
 	End If
     
 	' Visualize grid centers AFTER scaling (red points)
-	'VisualizeGridCenters doc, centers, xGrid, acRed, "After Scaling"
+	VisualizeGridCenters doc, centers, xGrid, acRed, "Após a Escala"
 	DistributeToGrid regionEntities, centers, xGrid, yGrid, cellHeight
     
 Cleanup:
@@ -913,6 +913,7 @@ Private Sub VisualizeGridCenters(doc As AcadDocument, centers As Collection, xGr
 		' Set color and add hyperlink metadata
 		If Not pointObj Is Nothing Then
 			pointObj.Color = pointColor
+			pointObj.Layer = "Shapes"
 			
 			' Add hyperlink metadata with cell coordinate information
 			If pointObj.Hyperlinks.Count >= 0 Then
