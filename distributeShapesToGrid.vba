@@ -111,7 +111,11 @@ Public Sub DistributeShapesToGrid()
 	
 	If scaleFactor > 0.000001 Then
 		Dim origin(0 To 2) As Double
-		origin(0) = xGrid(0): origin(1) = yGrid(0): origin(2) = 0
+		Dim gridMin As Variant, gridMax As Variant
+		GetSelectionSetBounds gridSS, gridMin, gridMax
+		origin(0) = gridMin(0)
+		origin(1) = gridMin(1)
+		origin(2) = 0
 		ScaleEntitiesInSelection gridSS, origin, scaleFactor
 		ScaleGridData xGrid, yGrid, origin, scaleFactor
 		cellWidth = AverageStep(xGrid)
@@ -448,6 +452,33 @@ Private Sub GetEntitiesBounds(ents As Collection, ByRef minPt As Variant, ByRef 
 	Next ent
 	
 	' Return bounding box as [minX, minY, Z] and [maxX, maxY, Z]
+	minPt = Array(minX, minY, 0)
+	maxPt = Array(maxX, maxY, 0)
+End Sub
+
+Private Sub GetSelectionSetBounds(ss As AcadSelectionSet, ByRef minPt As Variant, ByRef maxPt As Variant)
+	' Bounding box for a selection set
+	Dim minX As Double, minY As Double, maxX As Double, maxY As Double
+	Dim first As Boolean: first = True
+	Dim ent As AcadEntity
+	Dim eMin As Variant, eMax As Variant
+	For Each ent In ss
+		On Error Resume Next
+		ent.GetBoundingBox eMin, eMax
+		If Err.Number = 0 Then
+			If first Then
+				minX = eMin(0): minY = eMin(1): maxX = eMax(0): maxY = eMax(1)
+				first = False
+			Else
+				If eMin(0) < minX Then minX = eMin(0)
+				If eMin(1) < minY Then minY = eMin(1)
+				If eMax(0) > maxX Then maxX = eMax(0)
+				If eMax(1) > maxY Then maxY = eMax(1)
+			End If
+		End If
+		Err.Clear
+		On Error GoTo 0
+	Next ent
 	minPt = Array(minX, minY, 0)
 	maxPt = Array(maxX, maxY, 0)
 End Sub
