@@ -16,6 +16,16 @@ Public Sub DetectOuterShapes()
     Dim doc As AcadDocument
     Set doc = ThisDrawing
     
+    ' Ensure "Shapes" layer exists
+    Dim shapesLayer As AcadLayer
+    On Error Resume Next
+    Set shapesLayer = doc.Layers.Item("Shapes")
+    If Err.Number <> 0 Then
+        Set shapesLayer = doc.Layers.Add("Shapes")
+        shapesLayer.Color = acGreen
+    End If
+    On Error GoTo 0
+    
     ' 2. Prompt for area selection
     ' We use a selection set to gather objects
     Dim sSet As AcadSelectionSet
@@ -181,11 +191,12 @@ Public Sub DetectOuterShapes()
         If Not isInner Then
             ' It is a Parent / Outer Shape
             ' Highlight the upper-level/parent loops INSIDE selection.
-            testReg.Color = acGreen
+            testReg.Layer = "Shapes"
+            testReg.Color = acByLayer
             On Error Resume Next
             testReg.Linetype = "Continuous"
             On Error GoTo 0
-            testReg.Highlight True
+            testReg.Highlight False
         Else
             ' It is an inner loop / hole
             ' Delete the generated region to keep drawing clean?
@@ -195,8 +206,8 @@ Public Sub DetectOuterShapes()
         End If
     Next i
     
-    doc.Utility.Prompt "Analysis Complete. Outer shapes highlighted in RED." & vbCrLf
-    MsgBox "Analysis Complete. Outer shapes highlighted.", vbInformation
+    doc.Utility.Prompt "Analysis Complete. Outer shapes moved to layer 'Shapes' and highlighted in GREEN." & vbCrLf
+    ' MsgBox "Analysis Complete. Outer shapes moved to layer 'Shapes' and highlighted.", vbInformation
     
     ' Show userform again
     If Not formPerfisul01 Is Nothing Then formPerfisul01.Show
