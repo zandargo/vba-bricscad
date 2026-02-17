@@ -620,6 +620,15 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	If rows = 0 Then rows = yCount - 1
 	cellWidth = AverageStep(xGrid)
 	cellHeight = AverageStep(yGrid)
+
+	' Normalize all Y grid lines to be equally spaced so every row step equals the averaged cellHeight
+	If yCount >= 2 Then
+		Dim topY As Double
+		topY = yGrid(yCount - 1)
+		For i = 0 To yCount - 1
+			yGrid(yCount - 1 - i) = topY - cellHeight * i
+		Next i
+	End If
     
 	BuildCenters xGrid, yGrid, centers
 	Set gridSS = sset
