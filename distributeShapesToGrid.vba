@@ -49,12 +49,14 @@ Public Sub DistributeShapesToGrid()
     
 	Dim regionEntities As Collection
 	Set regionEntities = New Collection
+	Dim regionLabels() As String
 	Dim regionCenters() As Variant
 	Dim regionWidths() As Double
 	Dim regionHeights() As Double
 	ReDim regionCenters(1 To outerRegions.Count)
 	ReDim regionWidths(1 To outerRegions.Count)
 	ReDim regionHeights(1 To outerRegions.Count)
+	ReDim regionLabels(1 To outerRegions.Count)
     
 	Dim i As Long
 	Dim maxWidth As Double: maxWidth = 0
@@ -66,6 +68,7 @@ Public Sub DistributeShapesToGrid()
 		Dim ents As Collection
 		Set ents = CollectEntitiesForRegion(reg, shapeSS, allRegions)
 		regionEntities.Add ents
+		regionLabels(i) = ExtractRegionLabel(ents)
         
 		Dim centerPt() As Double
 		centerPt = GetEntitySetCenter(reg)
@@ -84,6 +87,9 @@ Public Sub DistributeShapesToGrid()
 		regionHeights(i) = maxPt(1) - minPt(1)
 		If regionWidths(i) > maxWidth Then maxWidth = regionWidths(i)
 	Next i
+
+	' Sort regions so labeled shapes go first (alphabetical), followed by unlabeled ones
+	Set regionEntities = OrderRegionsByLabel(regionEntities, regionLabels)
     
 	Dim centers As Collection
 	Dim cellWidth As Double, cellHeight As Double
@@ -129,6 +135,7 @@ Public Sub DistributeShapesToGrid()
     
 Cleanup:
 	On Error Resume Next
+	If Not shapesLayer Is Nothing Then shapesLayer.LayerOn = False
 	If Not gridSS Is Nothing Then gridSS.Delete
 	shapeSS.Delete
 	doc.EndUndoMark
@@ -1063,6 +1070,109 @@ End Sub
 '-----------------------------
 ' Utilities
 '-----------------------------
+
+Private Function ExtractRegionLabel(ents As Collection) As String
+	Dim ent As AcadEntity
+	For Each ent In ents
+		If TypeOf ent Is AcadText Or TypeOf ent Is AcadMText Then
+			If IsGravacaoLayerName(ent.Layer) Then
+				Dim txt As String
+				txt = Trim$(GetEntityTextString(ent))
+				If txt <> "" Then
+					If Not ContainsExcludedKeyword(txt) Then
+						ExtractRegionLabel = txt
+						Exit Function
+					End If
+				End If
+			End If
+		End If
+	Next ent
+End Function
+
+Private Function GetEntityTextString(ent As AcadEntity) As String
+	On Error Resume Next
+	If TypeOf ent Is AcadText Then
+		GetEntityTextString = ent.TextString
+	ElseIf TypeOf ent Is AcadMText Then
+		GetEntityTextString = ent.TextString
+	End If
+	Err.Clear
+	On Error GoTo 0
+End Function
+
+Private Function IsGravacaoLayerName(layerName As String) As Boolean
+	Dim normalized As String
+	normalized = LCase$(StripDiacritics(Trim$(layerName)))
+	IsGravacaoLayerName = (normalized = "gravacao")
+End Function
+
+Private Function ContainsExcludedKeyword(textVal As String) As Boolean
+	Dim normalized As String
+	normalized = LCase$(StripDiacritics(textVal))
+	If InStr(1, normalized, "carroceria", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
+	If InStr(1, normalized, "ferramentaria", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
+	If InStr(1, normalized, "portas", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
+	If InStr(1, normalized, "tampa", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
+	If InStr(1, normalized, "vidros", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
+	If InStr(1, normalized, "teto", vbTextCompare) > 0 Then ContainsExcludedKeyword = True
+End Function
+
+Private Function OrderRegionsByLabel(regionEntities As Collection, labels() As String) As Collection
+	Dim labeled As New Collection
+	Dim unlabeled As New Collection
+	Dim i As Long
+	For i = 1 To regionEntities.Count
+		If Trim$(labels(i)) <> "" Then
+			labeled.Add i
+		Else
+			unlabeled.Add i
+		End If
+	Next i
+
+	Dim sortedLabeled As Collection
+	Set sortedLabeled = SortIndicesByLabel(labels, labeled)
+
+	Dim result As New Collection
+	Dim idxVar As Variant
+	For Each idxVar In sortedLabeled
+		result.Add regionEntities(idxVar)
+	Next idxVar
+	For Each idxVar In unlabeled
+		result.Add regionEntities(idxVar)
+	Next idxVar
+	Set OrderRegionsByLabel = result
+End Function
+
+Private Function SortIndicesByLabel(labels() As String, indices As Collection) As Collection
+	Dim count As Long
+	count = indices.Count
+	If count = 0 Then
+		Dim emptyCol As New Collection
+		Set SortIndicesByLabel = emptyCol
+		Exit Function
+	End If
+	Dim arr() As Long
+	ReDim arr(1 To count)
+	Dim i As Long, j As Long
+	For i = 1 To count
+		arr(i) = CLng(indices(i))
+	Next i
+	For i = 1 To count - 1
+		For j = i + 1 To count
+			If StrComp(labels(arr(i)), labels(arr(j)), vbTextCompare) > 0 Then
+				Dim tmp As Long
+				tmp = arr(i)
+				arr(i) = arr(j)
+				arr(j) = tmp
+			End If
+		Next j
+	Next i
+	Dim sorted As New Collection
+	For i = 1 To count
+		sorted.Add arr(i)
+	Next i
+	Set SortIndicesByLabel = sorted
+End Function
 
 Private Function PrepareSelectionSet(doc As AcadDocument, name As String) As AcadSelectionSet
 	On Error Resume Next
