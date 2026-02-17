@@ -171,6 +171,10 @@ Private Function CollectSamplingPoints(ss As AcadSelectionSet, centerPt() As Dou
     ReDim pointsOut(0 To 1000) As Point2D
     
     For Each ent In ss
+        If IsExcludedFromAngleCalculation(ent) Then
+            GoTo NextEntity
+        End If
+
         Dim objName As String
         objName = UCase$(ent.ObjectName)
         
@@ -187,9 +191,31 @@ Private Function CollectSamplingPoints(ss As AcadSelectionSet, centerPt() As Dou
             ' Fallback to bounding box corners for other entities
             CollectBoundingBoxPoints ent, centerPt, pointsOut, count
         End If
+
+NextEntity:
     Next ent
     
     CollectSamplingPoints = count
+End Function
+
+Private Function IsExcludedFromAngleCalculation(ent As AcadEntity) As Boolean
+    Dim objName As String
+    objName = UCase$(ent.ObjectName)
+    
+    If InStr(1, objName, "REGION", vbTextCompare) > 0 Then
+        IsExcludedFromAngleCalculation = True
+        Exit Function
+    End If
+    
+    Dim layerName As String
+    layerName = UCase$(Trim$(ent.Layer))
+    
+    If layerName = "SHAPES" Then
+        IsExcludedFromAngleCalculation = True
+        Exit Function
+    End If
+    
+    IsExcludedFromAngleCalculation = False
 End Function
 
 Private Sub AddPoint(x As Double, y As Double, ByRef points() As Point2D, ByRef count As Long)
