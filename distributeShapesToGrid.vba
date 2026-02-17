@@ -37,6 +37,7 @@ Public Sub DistributeShapesToGrid()
 		MsgBox "Nenhum objeto selecionado para distribuir.", vbExclamation
 		GoTo Cleanup
 	End If
+	NormalizeSelectedLayers shapeSS
     
 	Dim allRegions As Collection
 	Dim outerRegions As Collection
@@ -800,6 +801,50 @@ Private Function PrepareSelectionSet(doc As AcadDocument, name As String) As Aca
 	End If
 	On Error GoTo 0
 	Set PrepareSelectionSet = ss
+End Function
+
+Private Sub NormalizeSelectedLayers(ss As AcadSelectionSet)
+	Dim ent As AcadEntity
+	For Each ent In ss
+		Dim layerName As String
+		layerName = LCase$(StripDiacritics(Trim$(ent.Layer)))
+		If InStr(1, layerName, "gravacao", vbTextCompare) = 0 And _
+		   InStr(1, layerName, "dobra", vbTextCompare) = 0 Then
+			On Error Resume Next
+			ent.Layer = "0"
+			Err.Clear
+			On Error GoTo 0
+		End If
+	Next ent
+End Sub
+
+Private Function StripDiacritics(ByVal text As String) As String
+	Dim i As Long
+	Dim ch As String
+	Dim code As Long
+	Dim result As String
+	result = ""
+	For i = 1 To Len(text)
+		ch = Mid$(text, i, 1)
+		code = AscW(ch)
+		Select Case code
+			Case 192, 193, 194, 195, 196, 197, 224, 225, 226, 227, 228, 229
+				result = result & "a"
+			Case 199, 231
+				result = result & "c"
+			Case 200, 201, 202, 203, 232, 233, 234, 235
+				result = result & "e"
+			Case 204, 205, 206, 207, 236, 237, 238, 239
+				result = result & "i"
+			Case 210, 211, 212, 213, 214, 242, 243, 244, 245, 246
+				result = result & "o"
+			Case 217, 218, 219, 220, 249, 250, 251, 252
+				result = result & "u"
+			Case Else
+				result = result & ch
+		End Select
+	Next i
+	StripDiacritics = result
 End Function
 
 Private Function EnsureShapesLayer(doc As AcadDocument) As AcadLayer
