@@ -162,7 +162,14 @@ Public Sub DistributeShapesToGrid()
     
 Cleanup:
 	On Error Resume Next
-	If Not shapesLayer Is Nothing Then shapesLayer.LayerOn = False
+	If Not shapesLayer Is Nothing Then
+		shapesLayer.LayerOn = False
+	Else
+		Dim cleanupLayer As AcadLayer
+		Set cleanupLayer = doc.Layers.Item("Shapes")
+		If Err.Number = 0 And Not cleanupLayer Is Nothing Then cleanupLayer.LayerOn = False
+		Err.Clear
+	End If
 	If Not gridSS Is Nothing Then gridSS.Delete
 	shapeSS.Delete
 	doc.EndUndoMark
@@ -1511,7 +1518,21 @@ Public Sub ExportShapesToDwg(regionEntities As Collection, regionLabels() As Str
 		' Restore entities to their original position
 		MoveEntities exportEnts, toPt, fromPt
 		
-		If wblockOk Then exported = exported + 1
+		If wblockOk Then
+			' Open the exported file, apply Extents zoom, save and close
+			Dim exportedDoc As AcadDocument
+			On Error Resume Next
+			Set exportedDoc = Application.Documents.Open(filePath)
+			If Err.Number = 0 And Not exportedDoc Is Nothing Then
+				Application.ZoomExtents
+				exportedDoc.Save
+				exportedDoc.Close False
+			End If
+			Err.Clear
+			Set exportedDoc = Nothing
+			On Error GoTo ErrHandler
+			exported = exported + 1
+		End If
 NextShape:
 	Next i
 	
