@@ -114,6 +114,11 @@ Public Sub DistributeShapesToGrid()
 		MsgBox "Falha ao calcular larguras.", vbExclamation, "Distribuir Formas"
 		GoTo Cleanup
 	End If
+
+	' Ask user if they want to fill cell headers with shape labels
+	Dim fillHeaders As Boolean
+	fillHeaders = (MsgBox("Deseja preencher os cabeçalhos das células com os rótulos das formas?", _
+						vbYesNo + vbQuestion, "Distribuir Formas") = vbYes)
     
 	' Padding factor to leave extra room inside each cell; adjust to fine-tune fit.
 	Dim scalePaddingFactor As Double
@@ -148,6 +153,10 @@ Public Sub DistributeShapesToGrid()
 	' Visualize grid centers AFTER scaling (red points)
 	VisualizeGridCenters doc, centers, xGrid, acRed, "Após a Escala"
 	DistributeToGrid regionEntities, centers, xGrid, yGrid, cellHeight
+
+	If fillHeaders Then
+		CreateHeaderLabels doc, regionLabels, centers, cellHeight, cellWidth, gridSS
+	End If
     
 Cleanup:
 	On Error Resume Next
@@ -157,10 +166,15 @@ Cleanup:
 	doc.EndUndoMark
 	If Not formPerfisul01 Is Nothing Then
 		' Move form to 75% of screen width
-		formPerfisul01.StartUpPosition = 0
+		' formPerfisul01.StartUpPosition = 0 ' Manual
 		' 0.75 factor for screen width percentage
-		' 0.75 factor for rough Pixel to Point conversion (96 DPI)
-		formPerfisul01.Left = (GetSystemMetrics(SM_CXSCREEN) * 0.75) * 0.75
+		' 0.75 factor for rough Pixel to Point conversion (Typical 96 DPI: 1 px = 0.75 pt)
+		Dim screenWidthPts As Double
+		screenWidthPts = GetSystemMetrics(SM_CXSCREEN) * 0.75
+		
+		formPerfisul01.StartUpPosition = 0
+		formPerfisul01.Left = screenWidthPts * 0.75
+		formPerfisul01.Top = 100
 		formPerfisul01.Show
 	End If
 	Exit Sub
@@ -964,6 +978,63 @@ Private Sub AppendExtraRows(centers As Collection, xGrid() As Double, baseY As D
 	Next r
 End Sub
 
+Private Sub CreateHeaderLabels(doc As AcadDocument, labels() As String, centers As Collection, _
+	cellHeight As Double, cellWidth As Double, gridSS As AcadSelectionSet)
+	
+	If gridSS Is Nothing Then Exit Sub
+	
+	Dim i As Long
+	Dim centerPt As Variant
+	Dim ent As AcadEntity
+	Dim eMin As Variant, eMax As Variant
+	Dim cellMinX As Double, cellMaxX As Double
+	Dim cellMinY As Double, cellMaxY As Double
+	Dim eCx As Double, eCy As Double
+	Dim txt As String, newTxt As String
+	Dim txtEnt As AcadText
+	Dim mtxtEnt As AcadMText
+	
+	For i = 1 To UBound(labels)
+		If i > centers.Count Then Exit For
+		If Trim$(labels(i)) = "" Then GoTo NextLabel
+		
+		centerPt = centers(i)
+		cellMinX = centerPt(0) - cellWidth / 2
+		cellMaxX = centerPt(0) + cellWidth / 2
+		cellMinY = centerPt(1) - cellHeight / 2
+		cellMaxY = centerPt(1) + cellHeight / 2
+		
+		' Search for text entities inside this cell that contain the placeholder "XXXX"
+		For Each ent In gridSS
+			If TypeOf ent Is AcadText Or TypeOf ent Is AcadMText Then
+				On Error Resume Next
+				ent.GetBoundingBox eMin, eMax
+				If Err.Number = 0 Then
+					eCx = (eMin(0) + eMax(0)) / 2
+					eCy = (eMin(1) + eMax(1)) / 2
+					If eCx >= cellMinX And eCx <= cellMaxX And _
+					   eCy >= cellMinY And eCy <= cellMaxY Then
+						txt = GetEntityTextString(ent)
+						If InStr(1, txt, "XXXX", vbBinaryCompare) > 0 Then
+							newTxt = Replace(txt, "XXXX", labels(i), 1, -1, vbBinaryCompare)
+							If TypeOf ent Is AcadText Then
+								Set txtEnt = ent
+								txtEnt.TextString = newTxt
+							ElseIf TypeOf ent Is AcadMText Then
+								Set mtxtEnt = ent
+								mtxtEnt.TextString = newTxt
+							End If
+						End If
+					End If
+				End If
+				Err.Clear
+				On Error GoTo 0
+			End If
+		Next ent
+NextLabel:
+	Next i
+End Sub
+
 Private Sub VisualizeGridCenters(doc As AcadDocument, centers As Collection, xGrid() As Double, Optional pointColor As Long = acRed, Optional debugLabel As String = "")
 	' Draw points at grid cell centers with hyperlink metadata containing cell coordinates
 	' pointColor: color for the points (default acRed)
@@ -1207,10 +1278,10 @@ Private Function ContainsExcludedKeyword(textVal As String) As Boolean
 	If InStr(1, normalized, "portas", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
 	If InStr(1, normalized, "tampa", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
 	If InStr(1, normalized, "vidros", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
-	If InStr(1, normalized, "teto", vbTextCompare) > 0 Then ContainsExcludedKeyword = True
+	If InStr(1, normalized, "teto", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
 End Function
 
-Private Function OrderRegionsByLabel(regionEntities As Collection, labels() As String) As Collection
+Private Function OrderRegionsByLabel(regionEntities As Collection, ByRef labels() As String) As Collection
 	Dim labeled As New Collection
 	Dim unlabeled As New Collection
 	Dim i As Long
@@ -1226,13 +1297,24 @@ Private Function OrderRegionsByLabel(regionEntities As Collection, labels() As S
 	Set sortedLabeled = SortIndicesByLabel(labels, labeled)
 
 	Dim result As New Collection
+	Dim newLabels() As String
+	ReDim newLabels(LBound(labels) To UBound(labels))
+	Dim k As Long
+	k = LBound(labels)
+
 	Dim idxVar As Variant
 	For Each idxVar In sortedLabeled
 		result.Add regionEntities(idxVar)
+		newLabels(k) = labels(idxVar)
+		k = k + 1
 	Next idxVar
 	For Each idxVar In unlabeled
 		result.Add regionEntities(idxVar)
+		newLabels(k) = labels(idxVar)
+		k = k + 1
 	Next idxVar
+
+	labels = newLabels
 	Set OrderRegionsByLabel = result
 End Function
 
