@@ -95,10 +95,15 @@ Public Sub DistributeShapesToGrid()
 	Dim centers As Collection
 	Dim cellWidth As Double, cellHeight As Double
 	Dim xGrid() As Double, yGrid() As Double
+	Dim gridMinX As Double, gridMinY As Double
+	Dim gridMaxX As Double, gridMaxY As Double
+	Dim zoomMaxX As Double, zoomMaxY As Double
+	Dim hasGridTopRight As Boolean
 	Dim cols As Long, rows As Long
 	Dim gridSS As AcadSelectionSet
 	Set centers = New Collection
-	If Not DetectGridFromUserSelection(centers, cellWidth, cellHeight, xGrid, yGrid, cols, rows, gridSS) Then
+	If Not DetectGridFromUserSelection(centers, cellWidth, cellHeight, xGrid, yGrid, cols, rows, gridSS, _
+		gridMinX, gridMinY, gridMaxX, gridMaxY, zoomMaxX, zoomMaxY, hasGridTopRight) Then
 		GoTo Cleanup
 	End If
     
@@ -125,9 +130,16 @@ Public Sub DistributeShapesToGrid()
 		origin(2) = 0
 		ScaleEntitiesInSelection gridSS, origin, scaleFactor
 		ScaleGridData xGrid, yGrid, origin, scaleFactor
+		gridMinX = origin(0) + (gridMinX - origin(0)) * scaleFactor
+		gridMinY = origin(1) + (gridMinY - origin(1)) * scaleFactor
+		gridMaxX = origin(0) + (gridMaxX - origin(0)) * scaleFactor
+		gridMaxY = origin(1) + (gridMaxY - origin(1)) * scaleFactor
+		zoomMaxX = origin(0) + (zoomMaxX - origin(0)) * scaleFactor
+		zoomMaxY = origin(1) + (zoomMaxY - origin(1)) * scaleFactor
 		cellWidth = AverageStep(xGrid)
 		cellHeight = AverageStep(yGrid)
 		RebuildCentersFromGrid xGrid, yGrid, centers
+		ZoomToGridWindow doc, gridMinX, gridMinY, zoomMaxX, zoomMaxY, 0.1
 	End If
     
 	' Visualize grid centers AFTER scaling (red points)
@@ -519,7 +531,9 @@ End Sub
 
 Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWidth As Double, ByRef cellHeight As Double, _
 	ByRef xGrid() As Double, ByRef yGrid() As Double, ByRef cols As Long, ByRef rows As Long, _
-	ByRef gridSS As AcadSelectionSet) As Boolean
+	ByRef gridSS As AcadSelectionSet, ByRef gridMinXOut As Double, ByRef gridMinYOut As Double, _
+	ByRef gridMaxXOut As Double, ByRef gridMaxYOut As Double, ByRef zoomMaxXOut As Double, _
+	ByRef zoomMaxYOut As Double, ByRef hasTopRightCornerOut As Boolean) As Boolean
 	
 	' Radius offset multipliers for grid corner calculation
 	Const HORIZONTAL_RADIUS_MULTIPLIER As Double = 1.2
@@ -576,6 +590,12 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	SortDoubles yArr, yCount
 	xCount = MergeCloseSorted(xArr, xCount)
 	yCount = MergeCloseSorted(yArr, yCount)
+
+	' Selection bounds are the fallback zoom bounds.
+	Dim selectionMin As Variant, selectionMax As Variant
+	GetSelectionSetBounds sset, selectionMin, selectionMax
+	zoomMaxXOut = selectionMax(0)
+	zoomMaxYOut = selectionMax(1)
 	
 	' If circles were found, use them to determine grid extent
 	If circles.Count > 0 Then
@@ -709,6 +729,17 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	End If
     
 	BuildCenters xGrid, yGrid, centers
+	gridMinXOut = xGrid(0)
+	gridMinYOut = yGrid(0)
+	gridMaxXOut = xGrid(UBound(xGrid))
+	gridMaxYOut = yGrid(UBound(yGrid))
+	hasTopRightCornerOut = hasTopRightCorner
+	If hasTopRightCorner Then
+		gridMaxXOut = topRightX
+		gridMaxYOut = topRightY
+		zoomMaxXOut = topRightX
+		zoomMaxYOut = topRightY
+	End If
 	Set gridSS = sset
 	DetectGridFromUserSelection = True
 End Function
@@ -746,6 +777,35 @@ Private Sub RebuildCentersFromGrid(xGrid() As Double, yGrid() As Double, centers
 		centers.Remove 1
 	Loop
 	BuildCenters xGrid, yGrid, centers
+End Sub
+
+Private Sub ZoomToGridWindow(doc As AcadDocument, minX As Double, minY As Double, maxX As Double, maxY As Double, Optional paddingRatio As Double = 0.1)
+	On Error Resume Next
+	minX = 0
+	minY = 0
+	If maxX <= minX Or maxY <= minY Then Exit Sub
+
+	Dim gridW As Double, gridH As Double
+	gridW = maxX - minX
+	gridH = maxY - minY
+	If gridW <= 0.000001 Or gridH <= 0.000001 Then Exit Sub
+
+	Dim padX As Double, padY As Double
+	padX = gridW * paddingRatio
+	padY = gridH * paddingRatio
+
+	Dim ll(0 To 2) As Double
+	Dim ur(0 To 2) As Double
+	ll(0) = minX - padX
+	ll(1) = minY - padY
+	ll(2) = 0
+	ur(0) = maxX + padX
+	ur(1) = maxY + 2 * padY
+	ur(2) = 0
+
+	doc.Application.ZoomWindow ll, ur
+	Err.Clear
+	On Error GoTo 0
 End Sub
 
 Private Function AverageStep(arr() As Double) As Double
