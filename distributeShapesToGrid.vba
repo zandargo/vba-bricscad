@@ -159,6 +159,10 @@ Public Sub DistributeShapesToGrid()
 	End If
     
 	ExportShapesToDwg regionEntities, regionLabels
+	On Error Resume Next
+	If Not shapesLayer Is Nothing Then shapesLayer.LayerOn = False
+	Err.Clear
+	On Error GoTo ErrHandler
     
 Cleanup:
 	On Error Resume Next
@@ -1528,6 +1532,11 @@ Public Sub ExportShapesToDwg(regionEntities As Collection, regionLabels() As Str
 				exportedDoc.Save
 				exportedDoc.Close False
 			End If
+			Err.Clear
+			' Delete the .bak file BricsCAD creates alongside the DWG
+			Dim bakPath As String
+			bakPath = Left$(filePath, Len(filePath) - 4) & ".bak"
+			If Dir(bakPath) <> "" Then Kill bakPath
 			Err.Clear
 			Set exportedDoc = Nothing
 			On Error GoTo ErrHandler
