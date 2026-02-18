@@ -158,6 +158,8 @@ Public Sub DistributeShapesToGrid()
 		CreateHeaderLabels doc, regionLabels, centers, cellHeight, cellWidth, gridSS
 	End If
     
+	ExportShapesToDwg regionEntities, regionLabels
+    
 Cleanup:
 	On Error Resume Next
 	If Not shapesLayer Is Nothing Then shapesLayer.LayerOn = False
@@ -1419,3 +1421,131 @@ Private Function EnsureShapesLayer(doc As AcadDocument) As AcadLayer
 	On Error GoTo 0
 	Set EnsureShapesLayer = shapesLayer
 End Function
+
+'-----------------------------
+' Export shapes to DWG files
+'-----------------------------
+
+Public Sub ExportShapesToDwg(regionEntities As Collection, regionLabels() As String)
+	On Error GoTo ErrHandler
+	
+	If MsgBox("Deseja salvar cada forma como um arquivo DWG separado?", _
+	          vbYesNo + vbQuestion, "Exportar Formas") = vbNo Then
+		Exit Sub
+	End If
+	
+	Dim destFolder As String
+	destFolder = BrowseForFolderDialog("Selecione a pasta de destino para os arquivos DWG")
+	If Trim$(destFolder) = "" Then
+		MsgBox "Nenhuma pasta selecionada. Exportação cancelada.", vbInformation, "Exportar Formas"
+		Exit Sub
+	End If
+	If Right$(destFolder, 1) <> "\" Then destFolder = destFolder & "\"
+	
+	Dim doc As AcadDocument
+	Set doc = ThisDrawing
+	
+	Dim exported As Long
+	exported = 0
+	Dim i As Long
+	For i = 1 To regionEntities.Count
+		Dim label As String
+		label = ""
+		If i <= UBound(regionLabels) Then label = Trim$(regionLabels(i))
+		If label = "" Then label = "Forma_" & Format(i, "000")
+		label = SanitizeFileName(label)
+		
+		Dim filePath As String
+		filePath = destFolder & label & ".dwg"
+		
+		Dim ents As Collection
+		Set ents = regionEntities(i)
+		If ents.Count = 0 Then GoTo NextShape
+		
+		' Only export entities on layer "0" or "Gravação" — skips regions on the "Shapes" layer
+		Dim exportEnts As Collection
+		Set exportEnts = New Collection
+		Dim entObj As AcadEntity
+		For Each entObj In ents
+			Dim layerNorm As String
+			layerNorm = LCase$(StripDiacritics(entObj.Layer))
+			If layerNorm = "0" Or layerNorm = "gravacao" Then
+				exportEnts.Add entObj
+			End If
+		Next entObj
+		If exportEnts.Count = 0 Then GoTo NextShape
+		
+		' Bounding-box center of the entities to export
+		Dim minPt As Variant, maxPt As Variant
+		GetEntitiesBounds exportEnts, minPt, maxPt
+		Dim cx As Double, cy As Double
+		cx = (minPt(0) + maxPt(0)) / 2
+		cy = (minPt(1) + maxPt(1)) / 2
+		
+		' Temporarily move entities to origin
+		Dim fromPt(0 To 2) As Double
+		Dim toPt(0 To 2) As Double
+		fromPt(0) = cx: fromPt(1) = cy: fromPt(2) = 0
+		toPt(0) = 0: toPt(1) = 0: toPt(2) = 0
+		MoveEntities exportEnts, fromPt, toPt
+		
+		' Build a temporary selection set and write to file with Wblock
+		Dim wbSS As AcadSelectionSet
+		Set wbSS = PrepareSelectionSet(doc, "DSG_WBLOCK")
+		For Each entObj In exportEnts
+			On Error Resume Next
+			wbSS.AddItems Array(entObj)
+			Err.Clear
+			On Error GoTo ErrHandler
+		Next entObj
+		
+		On Error Resume Next
+		doc.Wblock filePath, wbSS
+		Dim wblockOk As Boolean
+		wblockOk = (Err.Number = 0)
+		Err.Clear
+		wbSS.Delete
+		Err.Clear
+		On Error GoTo ErrHandler
+		
+		' Restore entities to their original position
+		MoveEntities exportEnts, toPt, fromPt
+		
+		If wblockOk Then exported = exported + 1
+NextShape:
+	Next i
+	
+	MsgBox exported & " forma(s) exportada(s) com sucesso para:" & vbCr & destFolder, _
+	       vbInformation, "Exportar Formas"
+	Exit Sub
+	
+ErrHandler:
+	MsgBox "Erro ao exportar formas: " & Err.Description, vbCritical, "Exportar Formas"
+End Sub
+
+Private Function BrowseForFolderDialog(title As String) As String
+	On Error GoTo Fallback
+	Dim shell As Object
+	Set shell = CreateObject("Shell.Application")
+	Dim folder As Object
+	Set folder = shell.BrowseForFolder(0, title, 0, 0)
+	If Not folder Is Nothing Then
+		BrowseForFolderDialog = folder.Self.Path
+	End If
+	Exit Function
+Fallback:
+	Err.Clear
+	BrowseForFolderDialog = InputBox("Digite o caminho da pasta de destino:", title, "C:\")
+End Function
+
+Private Function SanitizeFileName(ByVal name As String) As String
+	Dim invalid As String
+	invalid = "\/:*?""<>|"
+	Dim i As Long
+	For i = 1 To Len(invalid)
+		name = Join(Split(name, Mid$(invalid, i, 1)), "_")
+	Next i
+	SanitizeFileName = Trim$(name)
+End Function
+
+
