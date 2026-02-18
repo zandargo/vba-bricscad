@@ -1,5 +1,8 @@
 Option Explicit
 
+Private Declare PtrSafe Function GetSystemMetrics Lib "user32" (ByVal nIndex As Long) As Long
+Private Const SM_CXSCREEN = 0
+
 ' Distribute detected shapes onto a grid of cells.
 ' Steps:
 ' 1) Hide formPerfisul01 and ask user to window-select the shapes.
@@ -114,7 +117,7 @@ Public Sub DistributeShapesToGrid()
     
 	' Padding factor to leave extra room inside each cell; adjust to fine-tune fit.
 	Dim scalePaddingFactor As Double
-	scalePaddingFactor = 1.1
+	scalePaddingFactor = 1.05
 	Dim scaleFactor As Double
 	scaleFactor = (maxWidth / cellWidth) * scalePaddingFactor
 	
@@ -152,7 +155,14 @@ Cleanup:
 	If Not gridSS Is Nothing Then gridSS.Delete
 	shapeSS.Delete
 	doc.EndUndoMark
-	If Not formPerfisul01 Is Nothing Then formPerfisul01.Show
+	If Not formPerfisul01 Is Nothing Then
+		' Move form to 75% of screen width
+		formPerfisul01.StartUpPosition = 0
+		' 0.75 factor for screen width percentage
+		' 0.75 factor for rough Pixel to Point conversion (96 DPI)
+		formPerfisul01.Left = (GetSystemMetrics(SM_CXSCREEN) * 0.75) * 0.75
+		formPerfisul01.Show
+	End If
 	Exit Sub
     
 ErrHandler:
