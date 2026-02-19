@@ -1474,12 +1474,17 @@ Public Sub ExportShapesToDwg(regionEntities As Collection, regionLabels() As Str
 	
 	Dim exported As Long
 	exported = 0
+	Dim unlabeledCounter As Long
+	unlabeledCounter = 0
 	Dim i As Long
 	For i = 1 To regionEntities.Count
 		Dim label As String
 		label = ""
 		If i <= UBound(regionLabels) Then label = Trim$(regionLabels(i))
-		If label = "" Then label = "Forma_" & Format(i, "000")
+		If label = "" Then
+			unlabeledCounter = unlabeledCounter + 1
+			label = "SEM GRAVAÇÃO " & Format(unlabeledCounter, "00")
+		End If
 		label = SanitizeFileName(label)
 		
 		Dim filePath As String
