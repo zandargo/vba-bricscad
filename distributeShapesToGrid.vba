@@ -1022,10 +1022,18 @@ Private Sub CreateHeaderLabels(doc As AcadDocument, labels() As String, centers 
 	Dim txt As String, newTxt As String
 	Dim txtEnt As AcadText
 	Dim mtxtEnt As AcadMText
+	Dim unlabeledCounter As Long
+	unlabeledCounter = 0
 	
 	For i = 1 To UBound(labels)
 		If i > centers.Count Then Exit For
-		If Trim$(labels(i)) = "" Then GoTo NextLabel
+		
+		Dim currentLabel As String
+		currentLabel = Trim$(labels(i))
+		If currentLabel = "" Then
+			unlabeledCounter = unlabeledCounter + 1
+			currentLabel = "SEM GRAVAÇÃO " & Format(unlabeledCounter, "00")
+		End If
 		
 		centerPt = centers(i)
 		cellMinX = centerPt(0) - cellWidth / 2
@@ -1045,7 +1053,7 @@ Private Sub CreateHeaderLabels(doc As AcadDocument, labels() As String, centers 
 					   eCy >= cellMinY And eCy <= cellMaxY Then
 						txt = GetEntityTextString(ent)
 						If InStr(1, txt, "XXXX", vbBinaryCompare) > 0 Then
-							newTxt = Replace(txt, "XXXX", labels(i), 1, -1, vbBinaryCompare)
+							newTxt = Replace(txt, "XXXX", currentLabel, 1, -1, vbBinaryCompare)
 							If TypeOf ent Is AcadText Then
 								Set txtEnt = ent
 								txtEnt.TextString = newTxt
@@ -1060,7 +1068,6 @@ Private Sub CreateHeaderLabels(doc As AcadDocument, labels() As String, centers 
 				On Error GoTo 0
 			End If
 		Next ent
-NextLabel:
 	Next i
 End Sub
 
