@@ -1308,13 +1308,13 @@ End Function
 
 Private Function ContainsExcludedKeyword(textVal As String) As Boolean
 	Dim normalized As String
-	normalized = LCase$(StripDiacritics(textVal))
-	If InStr(1, normalized, "carroceria", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
-	If InStr(1, normalized, "ferramentaria", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
-	If InStr(1, normalized, "portas", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
-	If InStr(1, normalized, "tampa", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
-	If InStr(1, normalized, "vidros", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
-	If InStr(1, normalized, "teto", vbTextCompare) > 0 Then ContainsExcludedKeyword = True: Exit Function
+	normalized = LCase$(StripDiacritics(Trim$(textVal)))
+	If normalized = "carroceria" Then ContainsExcludedKeyword = True: Exit Function
+	If normalized = "ferramentaria" Then ContainsExcludedKeyword = True: Exit Function
+	If normalized = "portas" Then ContainsExcludedKeyword = True: Exit Function
+	If normalized = "tampa" Then ContainsExcludedKeyword = True: Exit Function
+	If normalized = "vidros" Then ContainsExcludedKeyword = True: Exit Function
+	If normalized = "teto" Then ContainsExcludedKeyword = True: Exit Function
 End Function
 
 Private Function OrderRegionsByLabel(regionEntities As Collection, ByRef labels() As String) As Collection
