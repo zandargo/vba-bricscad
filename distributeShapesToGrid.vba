@@ -323,18 +323,34 @@ Private Function CollectEntitiesForRegion(reg As AcadRegion, ss As AcadSelection
 	Dim ent As AcadEntity
 	For Each ent In ss
 		Dim eMin As Variant, eMax As Variant
+		Dim cx As Double, cy As Double
+		Dim gotCenter As Boolean: gotCenter = False
 		On Error Resume Next
 		ent.GetBoundingBox eMin, eMax
 		If Err.Number = 0 Then
-			Dim cx As Double, cy As Double
 			cx = (eMin(0) + eMax(0)) / 2
 			cy = (eMin(1) + eMax(1)) / 2
+			gotCenter = True
+		Else
+			Err.Clear
+			' Fallback for MText/Text: use InsertionPoint when GetBoundingBox fails
+			If TypeOf ent Is AcadMText Or TypeOf ent Is AcadText Then
+				Dim insPt As Variant
+				insPt = ent.InsertionPoint
+				If Err.Number = 0 Then
+					cx = insPt(0)
+					cy = insPt(1)
+					gotCenter = True
+				End If
+			End If
+		End If
+		Err.Clear
+		If gotCenter Then
 			If cx >= regMin(0) - 0.01 And cx <= regMax(0) + 0.01 And _
 			   cy >= regMin(1) - 0.01 And cy <= regMax(1) + 0.01 Then
 				col.Add ent
 			End If
 		End If
-		Err.Clear
 		On Error GoTo 0
 	Next ent
 
