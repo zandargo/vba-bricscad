@@ -36,10 +36,10 @@ Option Explicit
 ' Adjust these values to match any cello size or alternate string instrument.
 ' ==============================================================================
 
-Private Const SCALE_LENGTH       As Double = 690#   ' mm  Full vibrating string length (nut to bridge)
+Private Const SCALE_LENGTH       As Double = 685#   ' mm  Full vibrating string length (nut to bridge)
 Private Const FINGERBOARD_LEN    As Double = 250#   ' mm  Visible fingerboard length to render
-Private Const NUT_STRING_SPAN    As Double = 33#    ' mm  Outer-edge span of all 4 strings measured at the nut
-Private Const BRIDGE_STRING_SPAN As Double = 90#    ' mm  Outer-edge span of all 4 strings measured at the bridge
+Private Const NUT_STRING_SPAN    As Double = 26#    ' mm  Outer-edge span of all 4 strings measured at the nut
+Private Const BRIDGE_STRING_SPAN As Double = 60#    ' mm  Outer-edge span of all 4 strings measured at the bridge
 
 
 ' ==============================================================================
@@ -81,6 +81,26 @@ Private Const LEGEND_TEXT_STYLE  As String = "CELLO_Arial"     ' Arial text styl
 
 
 ' ==============================================================================
+' SECTION 5 – NOTE & STRING COLOURS
+' RGB Long values initialised by InitNoteColors at runtime.
+' Edit only this block to remap any colour; no other code needs to change.
+' ==============================================================================
+
+Private lngNoteC   As Long   ' C  – Crimson red
+Private lngNoteCsh As Long   ' C# – Dark orange
+Private lngNoteD   As Long   ' D  – Orange
+Private lngNoteDsh As Long   ' D# – Yellow-green
+Private lngNoteE   As Long   ' E  – Gold yellow
+Private lngNoteF   As Long   ' F  – Green
+Private lngNoteFsh As Long   ' F# – Dark green
+Private lngNoteG   As Long   ' G  – Cyan
+Private lngNoteGsh As Long   ' G# – Steel blue
+Private lngNoteA   As Long   ' A  – Medium blue
+Private lngNoteAsh As Long   ' A# – Magenta
+Private lngNoteB   As Long   ' B  – Violet
+
+
+' ==============================================================================
 ' PUBLIC ENTRY POINT
 ' ==============================================================================
 
@@ -97,6 +117,9 @@ Public Sub DrawCelloFingerboard()
 
     Dim doc As AcadDocument
     Set doc = ThisDrawing
+
+    ' --- Step 0: Initialise all note and string RGB colours ---
+    Call InitNoteColors
 
     ' --- Step 1: Ensure required layers exist ---
     Call EnsureLayer(doc, LAYER_STRINGS, acWhite)
@@ -234,7 +257,7 @@ Private Sub DrawStringLine(doc As AcadDocument, stringIndex As Integer)
     Set lineObj = doc.ModelSpace.AddLine(startPt, endPt)
     lineObj.Layer = LAYER_STRINGS
     ' Use the same color dispatcher as note circles so lines always match
-    lineObj.Color = CircleColor(stringIndex, openChromatic)
+    Call SetEntityRGB(lineObj, CircleColor(stringIndex, openChromatic))
     ' Apply realistic string diameter scaled by STRING_WIDTH_SCALE
     lineObj.Lineweight = NearestLineweight(StringBaseWidthMM(stringIndex) * STRING_WIDTH_SCALE)
 
@@ -332,13 +355,13 @@ Private Sub DrawNoteCircle(doc As AcadDocument, _
     Dim circObj As AcadCircle
     Set circObj = doc.ModelSpace.AddCircle(center, NOTE_RADIUS)
     circObj.Layer = lyrName
-    circObj.Color = col
+    Call SetEntityRGB(circObj, col)
 
     ' Fill the circle with a solid hatch in the same color
     Dim hatchObj As AcadHatch
     Set hatchObj = doc.ModelSpace.AddHatch(acHatchPatternTypePreDefined, "SOLID", True)
     hatchObj.Layer = lyrName
-    hatchObj.Color = col
+    Call SetEntityRGB(hatchObj, col)
     Dim boundary(0) As AcadEntity
     Set boundary(0) = circObj
     hatchObj.AppendOuterLoop boundary
@@ -458,12 +481,13 @@ End Function
 '   stringIndex : 0 = C  1 = G  2 = D  3 = A
 Private Function StringColor(stringIndex As Integer) As Long
 
+    ' Each string's color matches its open-note color (C=0, G=7, D=2, A=9)
     Select Case stringIndex
-        Case 0: StringColor = acRed        ' C string – Red
-        Case 1: StringColor = acGreen      ' G string – Green
-        Case 2: StringColor = acCyan       ' D string – Cyan
-        Case 3: StringColor = acYellow     ' A string – Yellow
-        Case Else: StringColor = acWhite   ' Fallback
+        Case 0: StringColor = NoteColor(0)   ' C string → C note color
+        Case 1: StringColor = NoteColor(7)   ' G string → G note color
+        Case 2: StringColor = NoteColor(2)   ' D string → D note color
+        Case 3: StringColor = NoteColor(9)   ' A string → A note color
+        Case Else: StringColor = RGB(255, 255, 255)
     End Select
 
 End Function
@@ -479,19 +503,19 @@ End Function
 Private Function NoteColor(chromaticIndex As Integer) As Long
 
     Select Case ((chromaticIndex Mod 12) + 12) Mod 12
-        Case 0:  NoteColor = 1    ' C  – Red
-        Case 1:  NoteColor = 22   ' C# – Dark orange-red
-        Case 2:  NoteColor = 30   ' D  – Orange
-        Case 3:  NoteColor = 50   ' D# – Yellow-green
-        Case 4:  NoteColor = 2    ' E  – Yellow
-        Case 5:  NoteColor = 3    ' F  – Green
-        Case 6:  NoteColor = 84   ' F# – Dark green
-        Case 7:  NoteColor = 4    ' G  – Cyan
-        Case 8:  NoteColor = 131  ' G# – Steel blue
-        Case 9:  NoteColor = 5    ' A  – Blue
-        Case 10: NoteColor = 6    ' A# – Magenta
-        Case 11: NoteColor = 201  ' B  – Violet
-        Case Else: NoteColor = 7  '      White (fallback)
+        Case 0:  NoteColor = lngNoteC
+        Case 1:  NoteColor = lngNoteCsh
+        Case 2:  NoteColor = lngNoteD
+        Case 3:  NoteColor = lngNoteDsh
+        Case 4:  NoteColor = lngNoteE
+        Case 5:  NoteColor = lngNoteF
+        Case 6:  NoteColor = lngNoteFsh
+        Case 7:  NoteColor = lngNoteG
+        Case 8:  NoteColor = lngNoteGsh
+        Case 9:  NoteColor = lngNoteA
+        Case 10: NoteColor = lngNoteAsh
+        Case 11: NoteColor = lngNoteB
+        Case Else: NoteColor = RGB(255, 255, 255)
     End Select
 
 End Function
@@ -599,6 +623,49 @@ End Sub
 ' ==============================================================================
 ' UTILITY
 ' ==============================================================================
+
+' InitNoteColors
+' --------------
+' Assigns RGB values to all module-level note and string colour variables.
+' Called once at the start of DrawCelloFingerboard.
+' Edit the RGB() calls below to remap colours; nothing else needs to change.
+Private Sub InitNoteColors()
+    lngNoteC   = RGB(220,  20,  60)   ' C  – Crimson red
+    lngNoteCsh = RGB(180,  60,   0)   ' C# – Dark orange
+    lngNoteD   = RGB(255, 140,   0)   ' D  – Orange
+    lngNoteDsh = RGB(154, 205,  50)   ' D# – Yellow-green
+    lngNoteE   = RGB(255, 215,   0)   ' E  – Gold yellow
+    lngNoteF   = RGB(  0, 180,   0)   ' F  – Green
+    lngNoteFsh = RGB(  0, 100,   0)   ' F# – Dark green
+    lngNoteG   = RGB(  0, 140, 210)   ' G  – Cyan/Light blue
+    lngNoteGsh = RGB( 70, 130, 180)   ' G# – Steel blue
+    lngNoteA   = RGB(  0,   0, 205)   ' A  – Medium blue
+    lngNoteAsh = RGB(200,   0, 200)   ' A# – Magenta
+    lngNoteB   = RGB(138,  43, 226)   ' B  – Violet
+
+End Sub
+
+
+' SetEntityRGB
+' ------------
+' Sets the TrueColor property of any AcadEntity from a VBA RGB Long value,
+' giving 24-bit colour instead of the 256-entry ACI palette.
+'
+'   ent      : the entity to colour
+'   rgbColor : a Long produced by VBA's RGB() function
+Private Sub SetEntityRGB(ent As AcadEntity, rgbColor As Long)
+    Dim r As Long
+    Dim g As Long
+    Dim b As Long
+    r = rgbColor And 255&
+    g = (rgbColor \ 256&) And 255&
+    b = (rgbColor \ 65536&) And 255&
+    Dim oCol As AcadAcCmColor
+    Set oCol = ent.TrueColor
+    oCol.SetRGB CInt(r), CInt(g), CInt(b)
+    ent.TrueColor = oCol
+End Sub
+
 
 ' EnsureLayer
 ' -----------
