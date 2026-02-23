@@ -1409,6 +1409,7 @@ Private Sub NormalizeSelectedLayers(ss As AcadSelectionSet)
 		   InStr(1, layerName, "dobra", vbTextCompare) = 0 Then
 			On Error Resume Next
 			ent.Layer = "0"
+			ent.Color = acByLayer
 			Err.Clear
 			On Error GoTo 0
 		End If
