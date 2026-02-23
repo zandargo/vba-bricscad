@@ -64,6 +64,7 @@ Public Sub DistributeShapesToGrid()
     
 	Dim i As Long
 	Dim maxWidth As Double: maxWidth = 0
+	Dim maxHeight As Double: maxHeight = 0
     
 	For i = 1 To outerRegions.Count
 		Dim reg As AcadRegion
@@ -90,6 +91,7 @@ Public Sub DistributeShapesToGrid()
 		regionWidths(i) = maxPt(0) - minPt(0)
 		regionHeights(i) = maxPt(1) - minPt(1)
 		If regionWidths(i) > maxWidth Then maxWidth = regionWidths(i)
+		If regionHeights(i) > maxHeight Then maxHeight = regionHeights(i)
 	Next i
 
 	' Sort regions so labeled shapes go first (alphabetical), followed by unlabeled ones
@@ -120,11 +122,13 @@ Public Sub DistributeShapesToGrid()
 	fillHeaders = (MsgBox("Deseja preencher os cabeçalhos das células com os rótulos das formas?", _
 						vbYesNo + vbQuestion, "Distribuir Formas") = vbYes)
     
-	' Padding factor to leave extra room inside each cell; adjust to fine-tune fit.
-	Dim scalePaddingFactor As Double
-	scalePaddingFactor = 1.05
+	' Padding factors to leave extra room inside each cell; adjust independently to fine-tune fit.
+	Dim widthPaddingFactor As Double
+	widthPaddingFactor = 1.05
+	Dim heightPaddingFactor As Double
+	heightPaddingFactor = 1.2
 	Dim scaleFactor As Double
-	scaleFactor = (maxWidth / cellWidth) * scalePaddingFactor
+	scaleFactor = (maxWidth / cellWidth) * widthPaddingFactor
 	
 	' Visualize grid centers BEFORE scaling (yellow points for debugging)
 	VisualizeGridCenters doc, centers, xGrid, acYellow, "Antes da Escala"
@@ -144,6 +148,35 @@ Public Sub DistributeShapesToGrid()
 		gridMaxY = origin(1) + (gridMaxY - origin(1)) * scaleFactor
 		zoomMaxX = origin(0) + (zoomMaxX - origin(0)) * scaleFactor
 		zoomMaxY = origin(1) + (zoomMaxY - origin(1)) * scaleFactor
+		cellWidth = AverageStep(xGrid)
+		cellHeight = AverageStep(yGrid)
+		RebuildCentersFromGrid xGrid, yGrid, centers
+		ZoomToGridWindow doc, gridMinX, gridMinY, zoomMaxX, zoomMaxY, 0.1
+	End If
+
+	' If the tallest region height exceeds the (now-scaled) cell height, apply an additional
+	' upscale so every cell can contain the tallest region without clipping.
+	' Only 85% of cellHeight is available for the shape body; the remaining 15% is reserved for header text.
+	Const CELL_BODY_RATIO As Double = 0.85
+	Dim effectiveCellHeight As Double
+	effectiveCellHeight = cellHeight * CELL_BODY_RATIO
+	If maxHeight > 0 And effectiveCellHeight > 0 And effectiveCellHeight < maxHeight Then
+		Dim heightAdjFactor As Double
+		heightAdjFactor = (maxHeight * heightPaddingFactor) / effectiveCellHeight
+		Dim hOrigin(0 To 2) As Double
+		Dim hGridMin As Variant, hGridMax As Variant
+		GetSelectionSetBounds gridSS, hGridMin, hGridMax
+		hOrigin(0) = hGridMin(0)
+		hOrigin(1) = hGridMin(1)
+		hOrigin(2) = 0
+		ScaleEntitiesInSelection gridSS, hOrigin, heightAdjFactor
+		ScaleGridData xGrid, yGrid, hOrigin, heightAdjFactor
+		gridMinX = hOrigin(0) + (gridMinX - hOrigin(0)) * heightAdjFactor
+		gridMinY = hOrigin(1) + (gridMinY - hOrigin(1)) * heightAdjFactor
+		gridMaxX = hOrigin(0) + (gridMaxX - hOrigin(0)) * heightAdjFactor
+		gridMaxY = hOrigin(1) + (gridMaxY - hOrigin(1)) * heightAdjFactor
+		zoomMaxX = hOrigin(0) + (zoomMaxX - hOrigin(0)) * heightAdjFactor
+		zoomMaxY = hOrigin(1) + (zoomMaxY - hOrigin(1)) * heightAdjFactor
 		cellWidth = AverageStep(xGrid)
 		cellHeight = AverageStep(yGrid)
 		RebuildCentersFromGrid xGrid, yGrid, centers
