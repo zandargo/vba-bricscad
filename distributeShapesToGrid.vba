@@ -1405,6 +1405,7 @@ Private Sub NormalizeSelectedLayers(ss As AcadSelectionSet)
 		Dim layerName As String
 		layerName = LCase$(StripDiacritics(Trim$(ent.Layer)))
 		If InStr(1, layerName, "gravacao", vbTextCompare) = 0 And _
+			InStr(1, layerName, "texto", vbTextCompare) = 0 And _
 		   InStr(1, layerName, "dobra", vbTextCompare) = 0 Then
 			On Error Resume Next
 			ent.Layer = "0"

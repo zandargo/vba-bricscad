@@ -28,6 +28,9 @@ Public Sub RotateTextToLineAngle()
         End If
         midPt = MidPoint(objLine.StartPoint, objLine.EndPoint)
         
+        ' Apply scale factor of -1 to invert the line's direction
+        objLine.ScaleEntity midPt, -1
+        
         ' Select the text (Text or MText)
         Err.Clear
         On Error Resume Next
