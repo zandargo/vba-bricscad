@@ -325,8 +325,8 @@ Private Sub DrawNoteCircles(doc As AcadDocument, stringIndex As Integer)
                 Dim col As Long
                 col = CircleColor(stringIndex, absChromatic)
 
-                ' Draw the finger-position circle
-                Call DrawNoteCircle(doc, cx, cy, col, lyr)
+                ' Draw the finger-position circle (sharp notes are unfilled)
+                Call DrawNoteCircle(doc, cx, cy, col, lyr, Not sharp)
 
             End If
         End If
@@ -346,7 +346,8 @@ End Sub
 '   lyrName : target layer name
 Private Sub DrawNoteCircle(doc As AcadDocument, _
                            x As Double, y As Double, _
-                           col As Long, lyrName As String)
+                           col As Long, lyrName As String, _
+                           Optional filled As Boolean = True)
     Dim center(2) As Double
     center(0) = x
     center(1) = y
@@ -357,15 +358,17 @@ Private Sub DrawNoteCircle(doc As AcadDocument, _
     circObj.Layer = lyrName
     Call SetEntityRGB(circObj, col)
 
-    ' Fill the circle with a solid hatch in the same color
-    Dim hatchObj As AcadHatch
-    Set hatchObj = doc.ModelSpace.AddHatch(acHatchPatternTypePreDefined, "SOLID", True)
-    hatchObj.Layer = lyrName
-    Call SetEntityRGB(hatchObj, col)
-    Dim boundary(0) As AcadEntity
-    Set boundary(0) = circObj
-    hatchObj.AppendOuterLoop boundary
-    hatchObj.Evaluate
+    ' Fill the circle with a solid hatch in the same color (skipped for sharp notes)
+    If filled Then
+        Dim hatchObj As AcadHatch
+        Set hatchObj = doc.ModelSpace.AddHatch(acHatchPatternTypePreDefined, "SOLID", True)
+        hatchObj.Layer = lyrName
+        Call SetEntityRGB(hatchObj, col)
+        Dim boundary(0) As AcadEntity
+        Set boundary(0) = circObj
+        hatchObj.AppendOuterLoop boundary
+        hatchObj.Evaluate
+    End If
 
 End Sub
 
@@ -504,16 +507,16 @@ Private Function NoteColor(chromaticIndex As Integer) As Long
 
     Select Case ((chromaticIndex Mod 12) + 12) Mod 12
         Case 0:  NoteColor = lngNoteC
-        Case 1:  NoteColor = lngNoteCsh
+        Case 1:  NoteColor = lngNoteC    ' C# – same color as C
         Case 2:  NoteColor = lngNoteD
-        Case 3:  NoteColor = lngNoteDsh
+        Case 3:  NoteColor = lngNoteD    ' D# – same color as D
         Case 4:  NoteColor = lngNoteE
         Case 5:  NoteColor = lngNoteF
-        Case 6:  NoteColor = lngNoteFsh
+        Case 6:  NoteColor = lngNoteF    ' F# – same color as F
         Case 7:  NoteColor = lngNoteG
-        Case 8:  NoteColor = lngNoteGsh
+        Case 8:  NoteColor = lngNoteG    ' G# – same color as G
         Case 9:  NoteColor = lngNoteA
-        Case 10: NoteColor = lngNoteAsh
+        Case 10: NoteColor = lngNoteA    ' A# – same color as A
         Case 11: NoteColor = lngNoteB
         Case Else: NoteColor = RGB(255, 255, 255)
     End Select
@@ -598,8 +601,8 @@ Private Sub DrawColorLegend(doc As AcadDocument)
             Dim col As Long
             col = NoteColor(c)
 
-            ' Filled circle – identical appearance to fingerboard note circles
-            Call DrawNoteCircle(doc, legendX, cy, col, LAYER_LEGEND)
+            ' Circle – filled for naturals, unfilled for sharps (mirrors fingerboard)
+            Call DrawNoteCircle(doc, legendX, cy, col, LAYER_LEGEND, Not IsSharpNote(c))
 
             ' Note label to the right of the circle
             Dim insertPt(2) As Double
