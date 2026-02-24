@@ -108,7 +108,7 @@ Public Sub DistributeShapesToGrid()
 	Dim gridSS As AcadSelectionSet
 	Set centers = New Collection
 	If Not DetectGridFromUserSelection(centers, cellWidth, cellHeight, xGrid, yGrid, cols, rows, gridSS, _
-		gridMinX, gridMinY, gridMaxX, gridMaxY, zoomMaxX, zoomMaxY, hasGridTopRight) Then
+		gridMinX, gridMinY, gridMaxX, gridMaxY, zoomMaxX, zoomMaxY, hasGridTopRight, outerRegions.Count) Then
 		GoTo Cleanup
 	End If
     
@@ -150,7 +150,7 @@ Public Sub DistributeShapesToGrid()
 		zoomMaxY = origin(1) + (zoomMaxY - origin(1)) * scaleFactor
 		cellWidth = AverageStep(xGrid)
 		cellHeight = AverageStep(yGrid)
-		RebuildCentersFromGrid xGrid, yGrid, centers
+		RebuildCentersFromGrid xGrid, yGrid, centers, outerRegions.Count
 		ZoomToGridWindow doc, gridMinX, gridMinY, zoomMaxX, zoomMaxY, 0.1
 	End If
 
@@ -179,7 +179,7 @@ Public Sub DistributeShapesToGrid()
 		zoomMaxY = hOrigin(1) + (zoomMaxY - hOrigin(1)) * heightAdjFactor
 		cellWidth = AverageStep(xGrid)
 		cellHeight = AverageStep(yGrid)
-		RebuildCentersFromGrid xGrid, yGrid, centers
+		RebuildCentersFromGrid xGrid, yGrid, centers, outerRegions.Count
 		ZoomToGridWindow doc, gridMinX, gridMinY, zoomMaxX, zoomMaxY, 0.1
 	End If
     
@@ -619,7 +619,7 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	ByRef xGrid() As Double, ByRef yGrid() As Double, ByRef cols As Long, ByRef rows As Long, _
 	ByRef gridSS As AcadSelectionSet, ByRef gridMinXOut As Double, ByRef gridMinYOut As Double, _
 	ByRef gridMaxXOut As Double, ByRef gridMaxYOut As Double, ByRef zoomMaxXOut As Double, _
-	ByRef zoomMaxYOut As Double, ByRef hasTopRightCornerOut As Boolean) As Boolean
+	ByRef zoomMaxYOut As Double, ByRef hasTopRightCornerOut As Boolean, Optional regionCount As Long = -1) As Boolean
 	
 	' Radius offset multipliers for grid corner calculation
 	Const HORIZONTAL_RADIUS_MULTIPLIER As Double = 1.2
@@ -814,7 +814,7 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 		Next i
 	End If
     
-	BuildCenters xGrid, yGrid, centers
+	BuildCenters xGrid, yGrid, centers, regionCount
 	gridMinXOut = xGrid(0)
 	gridMinYOut = yGrid(0)
 	gridMaxXOut = xGrid(UBound(xGrid))
@@ -830,14 +830,18 @@ Private Function DetectGridFromUserSelection(centers As Collection, ByRef cellWi
 	DetectGridFromUserSelection = True
 End Function
 
-Private Sub BuildCenters(xGrid() As Double, yGrid() As Double, centers As Collection)
-	' Generate center points for all grid cells by iterating rows and columns
+Private Sub BuildCenters(xGrid() As Double, yGrid() As Double, centers As Collection, Optional maxCenters As Long = -1)
+	' Generate center points for all grid cells by iterating rows and columns.
+	' If maxCenters >= 0, stop once that many centers have been added.
 	Dim r As Long, c As Long
 	
 	' Iterate rows from top to bottom (reverse order: highest Y first)
 	For r = UBound(yGrid) - 1 To 0 Step -1
 		' Iterate columns from left to right
 		For c = 0 To UBound(xGrid) - 1
+			' Stop if we have reached the requested number of centers
+			If maxCenters >= 0 And centers.Count >= maxCenters Then Exit Sub
+			
 			' Create center point for this cell
 			Dim pt(0 To 2) As Double
 			
@@ -856,13 +860,13 @@ Private Sub BuildCenters(xGrid() As Double, yGrid() As Double, centers As Collec
 	Next r
 End Sub
 
-Private Sub RebuildCentersFromGrid(xGrid() As Double, yGrid() As Double, centers As Collection)
+Private Sub RebuildCentersFromGrid(xGrid() As Double, yGrid() As Double, centers As Collection, Optional maxCenters As Long = -1)
 	' Clear existing centers and rebuild from current grid state
 	' This is used after scaling the grid to recalculate all cell centers
 	Do While centers.Count > 0
 		centers.Remove 1
 	Loop
-	BuildCenters xGrid, yGrid, centers
+	BuildCenters xGrid, yGrid, centers, maxCenters
 End Sub
 
 Private Sub ZoomToGridWindow(doc As AcadDocument, minX As Double, minY As Double, maxX As Double, maxY As Double, Optional paddingRatio As Double = 0.1)
