@@ -62,6 +62,13 @@ Public Sub DistributeShapesToGrid()
 	ReDim regionHeights(1 To outerRegions.Count)
 	ReDim regionLabels(1 To outerRegions.Count)
     
+	' Ask user for target orientation before rotating shapes
+	Dim orientVertical As Boolean
+	orientVertical = (MsgBox("Qual é a orientação alvo das células?" & vbCr & vbCr & _
+		"[Sim] Horizontal — minimiza altura da forma, escala pela largura (padrão)" & vbCr & _
+		"[Não] Vertical  — minimiza largura da forma, escala pela altura", _
+		vbYesNo + vbQuestion, "Orientação das Formas") = vbNo)
+
 	Dim i As Long
 	Dim maxWidth As Double: maxWidth = 0
 	Dim maxHeight As Double: maxHeight = 0
@@ -79,9 +86,9 @@ Public Sub DistributeShapesToGrid()
 		centerPt = GetEntitySetCenter(reg)
 		regionCenters(i) = centerPt
         
-		Dim bestHeight As Double
+		Dim bestDim As Double
 		Dim bestAngle As Double
-		bestAngle = FindBestRotationAngleForEntities(ents, centerPt, bestHeight)
+		bestAngle = FindBestRotationAngleForEntities(ents, centerPt, bestDim, orientVertical)
 		If Abs(bestAngle) > 0.001 Then
 			RotateEntities ents, centerPt, bestAngle
 		End If
@@ -128,7 +135,19 @@ Public Sub DistributeShapesToGrid()
 	Dim heightPaddingFactor As Double
 	heightPaddingFactor = 1.2
 	Dim scaleFactor As Double
-	scaleFactor = (maxWidth / cellWidth) * widthPaddingFactor
+	If orientVertical Then
+		' Vertical: scale so the tallest region fits cell height (using effective body area)
+		Const CELL_BODY_RATIO_V As Double = 0.95
+		Dim effectiveCellHeightV As Double
+		effectiveCellHeightV = cellHeight * CELL_BODY_RATIO_V
+		If maxHeight > 0 And effectiveCellHeightV > 0 Then
+			scaleFactor = (maxHeight / effectiveCellHeightV) * heightPaddingFactor
+		Else
+			scaleFactor = 1
+		End If
+	Else
+		scaleFactor = (maxWidth / cellWidth) * widthPaddingFactor
+	End If
 	
 	' Visualize grid centers BEFORE scaling (yellow points for debugging)
 	VisualizeGridCenters doc, centers, xGrid, acYellow, "Antes da Escala"
@@ -154,15 +173,27 @@ Public Sub DistributeShapesToGrid()
 		ZoomToGridWindow doc, gridMinX, gridMinY, zoomMaxX, zoomMaxY, 0.1
 	End If
 
-	' If the tallest region height exceeds the (now-scaled) cell height, apply an additional
-	' upscale so every cell can contain the tallest region without clipping.
+	' If the dominant dimension still exceeds its cell dimension after the first upscale,
+	' apply an additional upscale so every cell can contain the region without clipping.
 	' Only 85% of cellHeight is available for the shape body; the remaining 15% is reserved for header text.
 	Const CELL_BODY_RATIO As Double = 0.85
 	Dim effectiveCellHeight As Double
 	effectiveCellHeight = cellHeight * CELL_BODY_RATIO
-	If maxHeight > 0 And effectiveCellHeight > 0 And effectiveCellHeight < maxHeight Then
+	Dim needsSecondScale As Boolean
+	If orientVertical Then
+		' Vertical: check region width vs cell width
+		needsSecondScale = (maxWidth > 0 And cellWidth > 0 And cellWidth < maxWidth * widthPaddingFactor)
+	Else
+		' Horizontal: check region height vs effective cell height
+		needsSecondScale = (maxHeight > 0 And effectiveCellHeight > 0 And effectiveCellHeight < maxHeight)
+	End If
+	If needsSecondScale Then
 		Dim heightAdjFactor As Double
-		heightAdjFactor = (maxHeight * heightPaddingFactor) / effectiveCellHeight
+		If orientVertical Then
+			heightAdjFactor = (maxWidth * widthPaddingFactor) / cellWidth
+		Else
+			heightAdjFactor = (maxHeight * heightPaddingFactor) / effectiveCellHeight
+		End If
 		Dim hOrigin(0 To 2) As Double
 		Dim hGridMin As Variant, hGridMax As Variant
 		GetSelectionSetBounds gridSS, hGridMin, hGridMax
@@ -426,7 +457,7 @@ End Function
 ' Orientation helpers
 '-----------------------------
 
-Private Function FindBestRotationAngleForEntities(ents As Collection, centerPt() As Double, ByRef heightOut As Double) As Double
+Private Function FindBestRotationAngleForEntities(ents As Collection, centerPt() As Double, ByRef dimensionOut As Double, Optional minimizeWidth As Boolean = False) As Double
 	Const STEP_DEG As Double = 1
 	Const PI As Double = 3.14159265358979
     
@@ -435,7 +466,7 @@ Private Function FindBestRotationAngleForEntities(ents As Collection, centerPt()
 	numPoints = CollectSamplingPointsFromCollection(ents, centerPt, points)
     
 	Dim bestAngle As Double: bestAngle = 0
-	Dim bestHeight As Double: bestHeight = 1E+30
+	Dim bestDim As Double: bestDim = 1E+30
 	Dim bestAspect As Double: bestAspect = 0
     
 	Dim deg As Double, angle As Double
@@ -443,14 +474,21 @@ Private Function FindBestRotationAngleForEntities(ents As Collection, centerPt()
 	For deg = 0 To 180 Step STEP_DEG
 		angle = deg * PI / 180
 		GetRotatedBoundsFromPoints points, numPoints, angle, width, height
-		If height > 0 Then aspect = width / height Else aspect = 0
-		If height < bestHeight - 0.001 Or (Abs(height - bestHeight) < 0.001 And aspect > bestAspect) Then
-			bestHeight = height
+		Dim targetDim As Double
+		If minimizeWidth Then
+			targetDim = width
+			If width > 0 Then aspect = height / width Else aspect = 0
+		Else
+			targetDim = height
+			If height > 0 Then aspect = width / height Else aspect = 0
+		End If
+		If targetDim < bestDim - 0.001 Or (Abs(targetDim - bestDim) < 0.001 And aspect > bestAspect) Then
+			bestDim = targetDim
 			bestAspect = aspect
 			bestAngle = angle
 		End If
 	Next deg
-	heightOut = bestHeight
+	dimensionOut = bestDim
 	FindBestRotationAngleForEntities = bestAngle
 End Function
 
