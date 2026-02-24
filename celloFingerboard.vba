@@ -38,8 +38,8 @@ Option Explicit
 
 Private Const SCALE_LENGTH       As Double = 685#   ' mm  Full vibrating string length (nut to bridge)
 Private Const FINGERBOARD_LEN    As Double = 250#   ' mm  Visible fingerboard length to render
-Private Const NUT_STRING_SPAN    As Double = 26#    ' mm  Outer-edge span of all 4 strings measured at the nut
-Private Const BRIDGE_STRING_SPAN As Double = 60#    ' mm  Outer-edge span of all 4 strings measured at the bridge
+Private Const NUT_STRING_SPAN    As Double = 24#    ' mm  Outer-edge span of all 4 strings measured at the nut
+Private Const BRIDGE_STRING_SPAN As Double = 48#    ' mm  Outer-edge span of all 4 strings measured at the bridge
 
 
 ' ==============================================================================
@@ -637,7 +637,7 @@ Private Sub InitNoteColors()
     lngNoteE   = RGB(255, 215,   0)   ' E  – Gold yellow
     lngNoteF   = RGB(  0, 180,   0)   ' F  – Green
     lngNoteFsh = RGB(  0, 100,   0)   ' F# – Dark green
-    lngNoteG   = RGB(  0, 140, 210)   ' G  – Cyan/Light blue
+    lngNoteG   = RGB(  0, 180, 210)   ' G  – Cyan/Light blue
     lngNoteGsh = RGB( 70, 130, 180)   ' G# – Steel blue
     lngNoteA   = RGB(  0,   0, 205)   ' A  – Medium blue
     lngNoteAsh = RGB(200,   0, 200)   ' A# – Magenta
