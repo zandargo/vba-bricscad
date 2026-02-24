@@ -1441,8 +1441,14 @@ Private Sub NormalizeSelectedLayers(ss As AcadSelectionSet)
 			InStr(1, layerName, "texto", vbTextCompare) = 0 And _
 		   InStr(1, layerName, "dobra", vbTextCompare) = 0 Then
 			On Error Resume Next
-			ent.Layer = "0"
-			ent.Color = acByLayer
+			If ent.Color = acYellow Then
+				EnsureGravacaoLayer ThisDrawing
+				ent.Layer = "Gravação"
+				ent.Color = acByLayer
+			Else
+				ent.Layer = "0"
+				ent.Color = acByLayer
+			End If
 			Err.Clear
 			On Error GoTo 0
 		End If
@@ -1489,6 +1495,19 @@ Private Function EnsureShapesLayer(doc As AcadDocument) As AcadLayer
 	End If
 	On Error GoTo 0
 	Set EnsureShapesLayer = shapesLayer
+End Function
+
+Private Function EnsureGravacaoLayer(doc As AcadDocument) As AcadLayer
+	Dim gravLayer As AcadLayer
+	On Error Resume Next
+	Set gravLayer = doc.Layers.Item("Gravação")
+	If Err.Number <> 0 Then
+		Err.Clear
+		Set gravLayer = doc.Layers.Add("Gravação")
+		gravLayer.Color = acYellow
+	End If
+	On Error GoTo 0
+	Set EnsureGravacaoLayer = gravLayer
 End Function
 
 '-----------------------------
