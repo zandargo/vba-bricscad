@@ -80,7 +80,21 @@ Public Sub TextSorter_IndexTexts()
     End If
     indexLayer.Color = 1 ' Red
 
-    ' 6. Add index text to the left of each sorted text object
+    ' 6. Count occurrences of each text value before adding index texts
+    Dim dict As Object
+    Dim txt As Variant
+    Dim eqCount As Long
+    Set dict = CreateObject("Scripting.Dictionary")
+    For i = 1 To UBound(textData, 1)
+        txt = textData(i, 1)
+        If dict.Exists(txt) Then
+            dict(txt) = dict(txt) + 1
+        Else
+            dict(txt) = 1
+        End If
+    Next i
+
+    ' 7. Add index text to the left of each sorted text object
     ' Create index numbering that repeats for identical texts
     Dim currentIndex As Long
     currentIndex = 1
@@ -105,25 +119,17 @@ Public Sub TextSorter_IndexTexts()
         indexPoint(2) = insPt(2)
         Set indexText = modelSpace.AddText(indexValue, indexPoint, indexHeight)
         indexText.Layer = "Index"
-        indexText.Color = 1 ' Red
+        ' Green (3) for repeated values, red (1) for unique values
+        If dict(textData(i, 1)) > 1 Then
+            indexText.Color = 3 ' Green - repeated value
+        Else
+            indexText.Color = 1 ' Red - unique value
+        End If
         indexText.Update
     Next i
 
     acadDoc.Regen acAllViewports
 
-    ' Count equal texts
-    Dim dict As Object
-    Dim txt As Variant
-    Dim eqCount As Long
-    Set dict = CreateObject("Scripting.Dictionary")
-    For i = 1 To UBound(textData, 1)
-        txt = textData(i, 1)
-        If dict.Exists(txt) Then
-            dict(txt) = dict(txt) + 1
-        Else
-            dict(txt) = 1
-        End If
-    Next i
     eqCount = 0
     For Each txt In dict.Keys
         If dict(txt) > 1 Then eqCount = eqCount + dict(txt)
