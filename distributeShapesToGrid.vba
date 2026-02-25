@@ -152,6 +152,12 @@ Public Sub DistributeShapesToGrid()
 	' Visualize grid centers BEFORE scaling (yellow points for debugging)
 	VisualizeGridCenters doc, centers, xGrid, acYellow, "Antes da Escala"
 	
+	' Hide Shapes layer before zooming
+	On Error Resume Next
+	If Not shapesLayer Is Nothing Then shapesLayer.LayerOn = False
+	Err.Clear
+	On Error GoTo ErrHandler
+	
 	If scaleFactor > 0.000001 Then
 		Dim origin(0 To 2) As Double
 		Dim gridMin As Variant, gridMax As Variant
@@ -223,10 +229,6 @@ Public Sub DistributeShapesToGrid()
 	End If
     
 	ExportShapesToDwg regionEntities, regionLabels
-	On Error Resume Next
-	If Not shapesLayer Is Nothing Then shapesLayer.LayerOn = False
-	Err.Clear
-	On Error GoTo ErrHandler
     
 Cleanup:
 	On Error Resume Next
