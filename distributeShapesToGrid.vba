@@ -131,13 +131,13 @@ Public Sub DistributeShapesToGrid()
     
 	' Padding factors to leave extra room inside each cell; adjust independently to fine-tune fit.
 	Dim widthPaddingFactor As Double
-	widthPaddingFactor = 1.05
+	widthPaddingFactor = 1.08
 	Dim heightPaddingFactor As Double
 	heightPaddingFactor = 1.2
 	Dim scaleFactor As Double
 	If orientVertical Then
 		' Vertical: scale so the tallest region fits cell height (using effective body area)
-		Const CELL_BODY_RATIO_V As Double = 0.95
+		Const CELL_BODY_RATIO_V As Double = 0.9
 		Dim effectiveCellHeightV As Double
 		effectiveCellHeightV = cellHeight * CELL_BODY_RATIO_V
 		If maxHeight > 0 And effectiveCellHeightV > 0 Then
