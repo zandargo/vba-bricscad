@@ -25,6 +25,9 @@ Public Sub ScaleToTextSize()
     Dim firstEnt As Boolean
     Dim formWasVisible As Boolean
     Dim strTarget As String
+    Dim lastTargetHeight As Double
+    Dim meanTextHeight As Double
+    Dim textCount As Long
 
     Set doc = ThisDrawing
 
@@ -53,6 +56,8 @@ Public Sub ScaleToTextSize()
 
         ' ----- 2. Find the largest text height in the selection -----
         maxTextHeight = 0
+        meanTextHeight = 0
+        textCount = 0
         For i = 0 To ss.Count - 1
             Set ent = ss.Item(i)
             h = 0
@@ -62,8 +67,13 @@ Public Sub ScaleToTextSize()
                     h = ent.Height
                     On Error GoTo 0
             End Select
-            If h > maxTextHeight Then maxTextHeight = h
+            If h > 0 Then
+                If h > maxTextHeight Then maxTextHeight = h
+                meanTextHeight = meanTextHeight + h
+                textCount = textCount + 1
+            End If
         Next i
+        If textCount > 0 Then meanTextHeight = meanTextHeight / textCount
 
         If maxTextHeight = 0 Then
             MsgBox "No text objects (TEXT / ATTDEF / ATTRIB) found in selection." & vbCr & _
@@ -72,11 +82,17 @@ Public Sub ScaleToTextSize()
 
         Else
             ' ----- 3. Prompt for target text height (InputBox) -----
+            Dim defaultHeight As Double
+            If lastTargetHeight > 0 Then
+                defaultHeight = lastTargetHeight
+            Else
+                defaultHeight = meanTextHeight
+            End If
             strTarget = InputBox( _
                 "Largest text height found:  " & Format(maxTextHeight, "0.####") & " mm" & vbCr & vbCr & _
                 "Enter the target text height (mm):", _
                 "Scale to Text Size", _
-                Format(maxTextHeight, "0.####"))
+                Format(defaultHeight, "0.####"))
 
             If strTarget = "" Then
                 ' User cancelled the dialog
@@ -126,6 +142,7 @@ Public Sub ScaleToTextSize()
 
                     ' ----- 5. Scale all selected entities about the selection centre -----
                     scaleFactor = targetHeight / maxTextHeight
+                    lastTargetHeight = targetHeight
 
                     doc.StartUndoMark
 
