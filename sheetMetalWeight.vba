@@ -68,14 +68,16 @@ Public Sub CalculateSheetMetalWeight()
         Set ent = doc.ModelSpace.Item(i)
         If UCase$(Trim$(ent.Layer)) = "SHAPES" Then
             If TypeOf ent Is AcadRegion Then
-                Set allRegs(regCount) = ent
-                regCount = regCount + 1
+                If ent.Color = acByLayer Then
+                    Set allRegs(regCount) = ent
+                    regCount = regCount + 1
+                End If
             End If
         End If
     Next i
 
     If regCount = 0 Then
-        MsgBox "Nenhuma região encontrada na camada ""Shapes"".", _
+        MsgBox "Nenhuma região verde encontrada na camada ""Shapes"".", _
                vbExclamation, "Peso da Chapa"
         Exit Sub
     End If
