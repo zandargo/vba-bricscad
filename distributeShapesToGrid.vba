@@ -1696,8 +1696,9 @@ Public Sub ExportShapesToDxf(regionEntities As Collection, regionLabels() As Str
 			Set exportedDoc = Application.Documents.Open(tmpPath)
 			If Err.Number = 0 And Not exportedDoc Is Nothing Then
 				DoEvents  ' let the document become active
+				' exportedDoc.SendCommand "ZOOMANIM" & vbCr & "0" & vbCr
+				exportedDoc.Application.ZoomExtents
 				exportedDoc.SendCommand _
-					"ZOOM" & vbCr & "E" & vbCr & _
 					"FILEDIA" & vbCr & "0" & vbCr & _
 					"DXFOUT" & vbCr & dxfPath & vbCr & "16" & vbCr & _
 					"FILEDIA" & vbCr & "1" & vbCr

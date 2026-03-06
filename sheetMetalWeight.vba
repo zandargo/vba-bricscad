@@ -174,28 +174,31 @@ Public Sub CalculateSheetMetalWeight()
 
     ' ------------------------------------------------------------------ '
     ' 6. Compute drawing-content bounding box to derive dynamic text metrics
+    '    (considering only objects in layer "linha_grade")
     ' ------------------------------------------------------------------ '
     Dim bbMinX As Double, bbMinY As Double, bbMaxX As Double, bbMaxY As Double
     Dim bbFirst As Boolean: bbFirst = True
     Dim bbEnt As AcadEntity
     For Each bbEnt In doc.ModelSpace
-        Dim bbMin As Variant, bbMax As Variant
-        On Error Resume Next
-        bbEnt.GetBoundingBox bbMin, bbMax
-        If Err.Number = 0 Then
-            If bbFirst Then
-                bbMinX = bbMin(0): bbMinY = bbMin(1)
-                bbMaxX = bbMax(0): bbMaxY = bbMax(1)
-                bbFirst = False
-            Else
-                If bbMin(0) < bbMinX Then bbMinX = bbMin(0)
-                If bbMin(1) < bbMinY Then bbMinY = bbMin(1)
-                If bbMax(0) > bbMaxX Then bbMaxX = bbMax(0)
-                If bbMax(1) > bbMaxY Then bbMaxY = bbMax(1)
+        If UCase$(Trim$(bbEnt.Layer)) = "0" Or UCase$(Trim$(bbEnt.Layer)) = "LINHA_GRADE" Then
+            Dim bbMin As Variant, bbMax As Variant
+            On Error Resume Next
+            bbEnt.GetBoundingBox bbMin, bbMax
+            If Err.Number = 0 Then
+                If bbFirst Then
+                    bbMinX = bbMin(0): bbMinY = bbMin(1)
+                    bbMaxX = bbMax(0): bbMaxY = bbMax(1)
+                    bbFirst = False
+                Else
+                    If bbMin(0) < bbMinX Then bbMinX = bbMin(0)
+                    If bbMin(1) < bbMinY Then bbMinY = bbMin(1)
+                    If bbMax(0) > bbMaxX Then bbMaxX = bbMax(0)
+                    If bbMax(1) > bbMaxY Then bbMaxY = bbMax(1)
+                End If
             End If
+            Err.Clear
+            On Error GoTo ErrHandler
         End If
-        Err.Clear
-        On Error GoTo ErrHandler
     Next bbEnt
 
     Dim dX As Double, dY As Double
@@ -213,13 +216,20 @@ Public Sub CalculateSheetMetalWeight()
     '    textHeight = 0.015 * dY
     '    position   = ( 0.0035 * dY , 0.0035 * dY )
     ' ------------------------------------------------------------------ '
+    ' Count outer regions
+    Dim outerCount As Long
+    outerCount = 0
+    For i = 0 To regCount - 1
+        If keepFlags(i) Then outerCount = outerCount + 1
+    Next i
+
     ' Format with 2 decimal places, replacing "." with "," per Brazilian locale
     Dim weightStr As String
     weightStr = Format(weightKg, "0.00")
     weightStr = Replace(weightStr, ".", ",")
 
     Dim labelText As String
-    labelText = "Peso Total: " & weightStr & " kg"
+    labelText = "Qtd de peças: " & Format(outerCount, "00") & "   |   Peso Total: " & weightStr & " kg"
 
     Dim textHeight As Double
     textHeight = 0.01 * dY
@@ -238,7 +248,8 @@ Public Sub CalculateSheetMetalWeight()
             On Error Resume Next
             Dim txtObj As AcadText
             Set txtObj = existingEnt
-            If InStr(1, txtObj.TextString, "Peso Total:", vbTextCompare) > 0 Then
+            If InStr(1, txtObj.TextString, "Quantidade de peças:", vbTextCompare) > 0 Or _
+               InStr(1, txtObj.TextString, "Peso Total:", vbTextCompare) > 0 Then
                 txtObj.Delete
             End If
             Err.Clear
@@ -254,6 +265,7 @@ Public Sub CalculateSheetMetalWeight()
     doc.EndUndoMark
 
     MsgBox "Peso calculado com sucesso!" & vbCr & vbCr & _
+           "Quantidade de peças: " & outerCount & vbCr & _
            "Área total (regiões externas): " & Format(totalAreaMm2, "#,##0.00") & " mm²" & vbCr & _
            "Espessura: " & thicknessMm & " mm" & vbCr & _
            "Densidade: " & densityKgM3 & " kg/m³" & vbCr & vbCr & _
