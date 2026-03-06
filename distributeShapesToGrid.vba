@@ -228,7 +228,7 @@ Public Sub DistributeShapesToGrid()
 		CreateHeaderLabels doc, regionLabels, centers, cellHeight, cellWidth, gridSS
 	End If
     
-	ExportShapesToDwg regionEntities, regionLabels
+	ExportShapesToDxf regionEntities, regionLabels
     
 Cleanup:
 	On Error Resume Next
@@ -1406,8 +1406,40 @@ Private Function OrderRegionsByLabel(regionEntities As Collection, ByRef labels(
 		End If
 	Next i
 
+	' Sort all labeled indices alphabetically so duplicate detection is in label order
 	Dim sortedLabeled As Collection
 	Set sortedLabeled = SortIndicesByLabel(labels, labeled)
+
+	' Split into: first occurrence of each label vs. subsequent (duplicate) occurrences.
+	' Duplicates are pushed after unlabeled shapes at the end.
+	Dim firstOccurrence As New Collection
+	Dim duplicates As New Collection
+	Dim seenLabels() As String
+	Dim seenCount As Long
+	seenCount = 0
+	If labeled.Count > 0 Then ReDim seenLabels(1 To labeled.Count)
+
+	Dim idxVar As Variant
+	For Each idxVar In sortedLabeled
+		Dim lbl As String
+		lbl = labels(CLng(idxVar))
+		Dim alreadySeen As Boolean
+		alreadySeen = False
+		Dim s As Long
+		For s = 1 To seenCount
+			If StrComp(seenLabels(s), lbl, vbTextCompare) = 0 Then
+				alreadySeen = True
+				Exit For
+			End If
+		Next s
+		If alreadySeen Then
+			duplicates.Add idxVar
+		Else
+			seenCount = seenCount + 1
+			seenLabels(seenCount) = lbl
+			firstOccurrence.Add idxVar
+		End If
+	Next idxVar
 
 	Dim result As New Collection
 	Dim newLabels() As String
@@ -1415,13 +1447,18 @@ Private Function OrderRegionsByLabel(regionEntities As Collection, ByRef labels(
 	Dim k As Long
 	k = LBound(labels)
 
-	Dim idxVar As Variant
-	For Each idxVar In sortedLabeled
+	' Order: unique first occurrences (A-Z) → unlabeled → duplicate occurrences (A-Z)
+	For Each idxVar In firstOccurrence
 		result.Add regionEntities(idxVar)
 		newLabels(k) = labels(idxVar)
 		k = k + 1
 	Next idxVar
 	For Each idxVar In unlabeled
+		result.Add regionEntities(idxVar)
+		newLabels(k) = labels(idxVar)
+		k = k + 1
+	Next idxVar
+	For Each idxVar In duplicates
 		result.Add regionEntities(idxVar)
 		newLabels(k) = labels(idxVar)
 		k = k + 1
@@ -1558,16 +1595,16 @@ End Function
 ' Export shapes to DWG files
 '-----------------------------
 
-Public Sub ExportShapesToDwg(regionEntities As Collection, regionLabels() As String)
+Public Sub ExportShapesToDxf(regionEntities As Collection, regionLabels() As String)
 	On Error GoTo ErrHandler
 	
-	If MsgBox("Deseja salvar cada forma como um arquivo DWG separado?", _
+	If MsgBox("Deseja salvar cada forma como um arquivo DXF separado?", _
 	          vbYesNo + vbQuestion, "Exportar Formas") = vbNo Then
 		Exit Sub
 	End If
 	
 	Dim destFolder As String
-	destFolder = BrowseForFolderDialog("Selecione a pasta de destino para os arquivos DWG")
+	destFolder = BrowseForFolderDialog("Selecione a pasta de destino para os arquivos DXF")
 	If Trim$(destFolder) = "" Then
 		MsgBox "Nenhuma pasta selecionada. Exportação cancelada.", vbInformation, "Exportar Formas"
 		Exit Sub
@@ -1592,8 +1629,10 @@ Public Sub ExportShapesToDwg(regionEntities As Collection, regionLabels() As Str
 		End If
 		label = SanitizeFileName(label)
 		
-		Dim filePath As String
-		filePath = destFolder & label & ".dwg"
+		Dim dxfPath As String
+		Dim tmpPath As String
+		dxfPath = destFolder & label & ".dxf"
+		tmpPath = destFolder & label & "_tmp.dwg"
 		
 		Dim ents As Collection
 		Set ents = regionEntities(i)
@@ -1637,9 +1676,9 @@ Public Sub ExportShapesToDwg(regionEntities As Collection, regionLabels() As Str
 		Next entObj
 		
 		On Error Resume Next
-		doc.Wblock filePath, wbSS
+		doc.Wblock tmpPath, wbSS
 		Dim wblockOk As Boolean
-		wblockOk = (Err.Number = 0)
+		wblockOk = (Err.Number = 0) And (Dir(tmpPath) <> "")
 		Err.Clear
 		wbSS.Delete
 		Err.Clear
@@ -1649,34 +1688,74 @@ Public Sub ExportShapesToDwg(regionEntities As Collection, regionLabels() As Str
 		MoveEntities exportEnts, toPt, fromPt
 		
 		If wblockOk Then
-			' Open the exported file, apply Extents zoom, save and close
+			' Open the temp DWG, then use SendCommand to run -DXFOUT directly on that document.
+			' Application.Eval runs in the wrong document context; SendCommand targets exportedDoc.
+			' FILEDIA is suppressed so no file-picker dialog interrupts the batch export.
 			Dim exportedDoc As AcadDocument
 			On Error Resume Next
-			Set exportedDoc = Application.Documents.Open(filePath)
+			Set exportedDoc = Application.Documents.Open(tmpPath)
 			If Err.Number = 0 And Not exportedDoc Is Nothing Then
-				Application.ZoomExtents
-				exportedDoc.Save
+				DoEvents  ' let the document become active
+				exportedDoc.SendCommand _
+					"ZOOM" & vbCr & "E" & vbCr & _
+					"FILEDIA" & vbCr & "0" & vbCr & _
+					"DXFOUT" & vbCr & dxfPath & vbCr & "16" & vbCr & _
+					"FILEDIA" & vbCr & "1" & vbCr
+				' Wait up to 15 seconds for the DXF file to appear on disk
+				Dim waitStart As Single
+				waitStart = Timer
+				Do
+					DoEvents
+				Loop Until Dir(dxfPath) <> "" Or (Timer - waitStart > 15)
 				exportedDoc.Close False
 			End If
 			Err.Clear
-			' Delete the .bak file BricsCAD creates alongside the DWG
+			' Delete the temp DWG, its .bak, and any .bak BricsCAD creates alongside the DXF
 			Dim bakPath As String
-			bakPath = Left$(filePath, Len(filePath) - 4) & ".bak"
-			If Dir(bakPath) <> "" Then Kill bakPath
+			bakPath = Left$(tmpPath, Len(tmpPath) - 4) & ".bak"
+			DeleteFileWithRetry bakPath
+			DeleteFileWithRetry tmpPath
+			DeleteFileWithRetry Left$(dxfPath, Len(dxfPath) - 4) & ".bak"
 			Err.Clear
 			Set exportedDoc = Nothing
 			On Error GoTo ErrHandler
-			exported = exported + 1
+			' Only count as exported if the DXF file was actually created on disk
+			If Dir(dxfPath) <> "" Then exported = exported + 1
 		End If
 NextShape:
 	Next i
 	
-	MsgBox exported & " forma(s) exportada(s) com sucesso para:" & vbCr & destFolder, _
+	MsgBox exported & " forma(s) exportada(s) como DXF com sucesso para:" & vbCr & destFolder, _
 	       vbInformation, "Exportar Formas"
 	Exit Sub
 	
 ErrHandler:
 	MsgBox "Erro ao exportar formas: " & Err.Description, vbCritical, "Exportar Formas"
+End Sub
+
+Private Sub DeleteFileWithRetry(filePath As String)
+	Const MAX_TRIES As Long = 5
+	Dim attempt As Long
+	For attempt = 1 To MAX_TRIES
+		On Error Resume Next
+		If Dir(filePath) <> "" Then
+			Kill filePath
+		End If
+		If Err.Number = 0 And Dir(filePath) = "" Then
+			Err.Clear
+			On Error GoTo 0
+			Exit Sub  ' successfully deleted (or never existed)
+		End If
+		Err.Clear
+		On Error GoTo 0
+		DoEvents  ' yield briefly so the OS can release any file lock
+		DoEvents
+		DoEvents
+	 Next attempt
+	On Error Resume Next
+	If Dir(filePath) <> "" Then Kill filePath  ' final attempt
+	Err.Clear
+	On Error GoTo 0
 End Sub
 
 Private Function BrowseForFolderDialog(title As String) As String
