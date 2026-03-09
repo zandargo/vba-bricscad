@@ -5,10 +5,12 @@ Option Explicit
 '
 ' Algorithm:
 '   1. Collect all AcadRegion objects on the "Shapes" layer.
-'   2. Identify outer regions — inner regions (holes/cuts) are excluded by
-'      testing whether a region is fully contained inside another region.
-'   3. Sum the areas of all outer regions (drawing units assumed to be mm,
-'      so areas are in mm²).
+'   2. Compute the nesting depth of every region: how many other regions
+'      fully contain it (determined via Boolean intersection copies).
+'   3. Sum areas using the even-odd rule:
+'        even depth (0, 2, …) → add area  (outer material / island)
+'        odd  depth (1, 3, …) → subtract area (hole / cut)
+'      Drawing units assumed to be mm, so areas are in mm².
 '   4. Compute weight using values from formPerfisul01:
 '        thickness  = valSheetThickness  (mm)
 '        density    = valSheetDensity    (kg/m³)
@@ -85,83 +87,58 @@ Public Sub CalculateSheetMetalWeight()
     ReDim Preserve allRegs(0 To regCount - 1)
 
     ' ------------------------------------------------------------------ '
-    ' 3. Identify outer regions (exclude inner/hole regions)
+    ' 3. Compute nesting depth for each region (even-odd rule)
+    '    nestDepth(i) = number of other regions that fully contain region i.
+    '    Even depth → material (add); Odd depth → hole/cut (subtract).
     ' ------------------------------------------------------------------ '
-    ' Sort by area descending so larger (outer) regions come first.
     Dim j As Long
-    Dim swapped As Boolean
-    Dim tmpReg As AcadRegion
-    Do
-        swapped = False
-        For i = 0 To regCount - 2
-            If allRegs(i).Area < allRegs(i + 1).Area Then
-                Set tmpReg = allRegs(i)
-                Set allRegs(i) = allRegs(i + 1)
-                Set allRegs(i + 1) = tmpReg
-                swapped = True
-            End If
-        Next i
-    Loop While swapped
-
-    ' keepFlags(i) = True  → outer region; False → contained inside another
-    Dim keepFlags() As Boolean
-    ReDim keepFlags(0 To regCount - 1)
+    Dim nestDepth() As Long
+    ReDim nestDepth(0 To regCount - 1)
     For i = 0 To regCount - 1
-        keepFlags(i) = True
+        nestDepth(i) = 0
     Next i
 
-    ' For each pair, test whether the smaller region is fully inside the larger.
-    ' A copy-based Boolean intersection is used so the originals are untouched.
+    Dim copyA As AcadRegion
+    Dim copyB As AcadRegion
+
+    ' For each region i, count how many other regions j fully contain it.
+    ' "Fully contained" means intersect(i, j) has the same area as i.
+    ' Copies are used for the Boolean op so originals are never touched.
     For i = 0 To regCount - 1
-        If keepFlags(i) Then
-            For j = 0 To regCount - 1
-                If i <> j And keepFlags(j) Then
-                    ' Only check when containerReg (j) has area >= testReg (i)
-                    If allRegs(j).Area >= allRegs(i).Area Then
-                        Dim copyA As AcadRegion
-                        Dim copyB As AcadRegion
-                        On Error Resume Next
-                        Set copyA = allRegs(i).Copy
-                        Set copyB = allRegs(j).Copy
-                        copyA.Boolean acIntersection, copyB
+        For j = 0 To regCount - 1
+            If i <> j Then
+                If allRegs(j).Area >= allRegs(i).Area Then
+                    On Error Resume Next
+                    Set copyA = allRegs(i).Copy
+                    Set copyB = allRegs(j).Copy
+                    Err.Clear
+                    copyA.Boolean acIntersection, copyB
 
-                        If Err.Number = 0 Then
-                            ' If intersection == testReg area, testReg is fully inside containerReg
-                            If Abs(copyA.Area - allRegs(i).Area) < 0.0001 Then
-                                keepFlags(i) = False
-                                copyA.Delete
-                                If Not copyB Is Nothing Then copyB.Delete
-                                Err.Clear
-                                Exit For        ' No need to check other containers
-                            End If
+                    If Err.Number = 0 Then
+                        If Abs(copyA.Area - allRegs(i).Area) < 0.0001 Then
+                            nestDepth(i) = nestDepth(i) + 1
                         End If
-
-                        ' Clean up copies whether or not an error occurred
-                        If Not copyA Is Nothing Then
-                            On Error Resume Next
-                            copyA.Delete
-                            Err.Clear
-                        End If
-                        If Not copyB Is Nothing Then
-                            On Error Resume Next
-                            copyB.Delete
-                            Err.Clear
-                        End If
-                        On Error GoTo ErrHandler
                     End If
+
+                    If Not copyA Is Nothing Then copyA.Delete
+                    If Not copyB Is Nothing Then copyB.Delete
+                    Err.Clear
+                    On Error GoTo ErrHandler
                 End If
-            Next j
-        End If
+            End If
+        Next j
     Next i
 
     ' ------------------------------------------------------------------ '
-    ' 4. Sum areas of outer regions
+    ' 4. Sum areas using even-odd rule: even depth → add, odd → subtract
     ' ------------------------------------------------------------------ '
     Dim totalAreaMm2 As Double
     totalAreaMm2 = 0
     For i = 0 To regCount - 1
-        If keepFlags(i) Then
+        If (nestDepth(i) Mod 2) = 0 Then
             totalAreaMm2 = totalAreaMm2 + allRegs(i).Area
+        Else
+            totalAreaMm2 = totalAreaMm2 - allRegs(i).Area
         End If
     Next i
 
@@ -218,11 +195,11 @@ Public Sub CalculateSheetMetalWeight()
     '    textHeight = 0.015 * dY
     '    position   = ( 0.0035 * dY , 0.0035 * dY )
     ' ------------------------------------------------------------------ '
-    ' Count outer regions
+    ' Count outer (depth-0) regions = number of distinct parts
     Dim outerCount As Long
     outerCount = 0
     For i = 0 To regCount - 1
-        If keepFlags(i) Then outerCount = outerCount + 1
+        If nestDepth(i) = 0 Then outerCount = outerCount + 1
     Next i
 
     ' Format with 2 decimal places, replacing "." with "," per Brazilian locale
@@ -268,7 +245,7 @@ Public Sub CalculateSheetMetalWeight()
 
     MsgBox "Peso calculado com sucesso!" & vbCr & vbCr & _
            "Quantidade de peças: " & outerCount & vbCr & _
-           "Área total (regiões externas): " & Format(totalAreaMm2, "#,##0.00") & " mm²" & vbCr & _
+           "Área líquida (externas - furos): " & Format(totalAreaMm2 / 1000000#, "#,##0.000000") & " m²" & vbCr & _
            "Espessura: " & thicknessMm & " mm" & vbCr & _
            "Densidade: " & densityKgM3 & " kg/m³" & vbCr & vbCr & _
            labelText, _
