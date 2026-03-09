@@ -370,6 +370,53 @@ Private Function FilterOuterRegions(regArr() As AcadRegion) As Collection
 		End If
 	Next i
     
+	' Subtract each inner region (hole) from its smallest containing outer region so that
+	' AcadRegion.Area on the outer region returns the net cut area (outer minus holes).
+	Dim holeArea As Double
+	Dim bestContainerArea As Double
+	Dim bestContainerIdx As Long
+	Dim contArea As Double
+	For i = LBound(regArr) To UBound(regArr)
+		If Not keepFlags(i) Then
+			Set testReg = regArr(i)
+			holeArea = testReg.Area
+			bestContainerIdx = -1
+			bestContainerArea = 1E+30
+			For j = LBound(regArr) To UBound(regArr)
+				If keepFlags(j) Then
+					Set containerReg = regArr(j)
+					contArea = containerReg.Area
+					If contArea >= holeArea And contArea < bestContainerArea Then
+						' Check that the hole is fully inside this candidate container
+						On Error Resume Next
+						Set copyA = testReg.Copy
+						Set copyB = containerReg.Copy
+						copyA.Boolean acIntersection, copyB
+						If Err.Number = 0 Then
+							If Abs(copyA.Area - holeArea) < 0.0001 Then
+								bestContainerIdx = j
+								bestContainerArea = contArea
+							End If
+						End If
+						If Not copyA Is Nothing Then copyA.Delete
+						If Not copyB Is Nothing Then copyB.Delete
+						Err.Clear
+						On Error GoTo 0
+					End If
+				End If
+			Next j
+			' Subtract the hole from its containing outer region (negative area)
+			On Error Resume Next
+			If bestContainerIdx >= 0 Then
+				regArr(bestContainerIdx).Boolean acSubtraction, testReg
+			Else
+				testReg.Delete
+			End If
+			Err.Clear
+			On Error GoTo 0
+		End If
+	Next i
+
 	Dim result As New Collection
 	For i = LBound(regArr) To UBound(regArr)
 		If keepFlags(i) Then result.Add regArr(i)
