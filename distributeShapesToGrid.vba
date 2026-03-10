@@ -387,8 +387,15 @@ Private Function FilterOuterRegions(regArr() As AcadRegion) As Collection
 		End If
 	Next i
     
-	' Subtract each inner region (hole) from its smallest containing outer region so that
-	' AcadRegion.Area on the outer region returns the net cut area (outer minus holes).
+	' Inner regions (holes) are intentionally kept as separate entities on the Shapes layer.
+	' CollectEntitiesForRegion will pick them up via the allRegions collection and move them
+	' together with their containing outer shape. sheetMetalWeight uses an even-odd nesting
+	' depth rule: depth-0 regions add area (outer material), depth-1 regions subtract area
+	' (holes). Merging holes into the outer region via Boolean acSubtraction was causing two
+	' problems: the resulting complex region's Color property no longer returned acByLayer,
+	' making it undetectable; and it destroyed the hole geometry as a separate entity,
+	' breaking the nesting-depth algorithm in sheetMetalWeight.
+	' Orphaned inner regions (no containing outer found) are deleted to avoid clutter.
 	Dim holeArea As Double
 	Dim bestContainerArea As Double
 	Dim bestContainerIdx As Long
@@ -404,7 +411,6 @@ Private Function FilterOuterRegions(regArr() As AcadRegion) As Collection
 					Set containerReg = regArr(j)
 					contArea = containerReg.Area
 					If contArea >= holeArea And contArea < bestContainerArea Then
-						' Check that the hole is fully inside this candidate container
 						On Error Resume Next
 						Set copyA = testReg.Copy
 						Set copyB = containerReg.Copy
@@ -422,15 +428,13 @@ Private Function FilterOuterRegions(regArr() As AcadRegion) As Collection
 					End If
 				End If
 			Next j
-			' Subtract the hole from its containing outer region (negative area)
-			On Error Resume Next
-			If bestContainerIdx >= 0 Then
-				regArr(bestContainerIdx).Boolean acSubtraction, testReg
-			Else
+			' Delete only orphaned inner regions (no container found); contained holes stay.
+			If bestContainerIdx < 0 Then
+				On Error Resume Next
 				testReg.Delete
+				Err.Clear
+				On Error GoTo 0
 			End If
-			Err.Clear
-			On Error GoTo 0
 		End If
 	Next i
 

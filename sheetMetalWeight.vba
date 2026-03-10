@@ -70,10 +70,8 @@ Public Sub CalculateSheetMetalWeight()
         Set ent = doc.ModelSpace.Item(i)
         If UCase$(Trim$(ent.Layer)) = "SHAPES" Then
             If TypeOf ent Is AcadRegion Then
-                If ent.Color = acByLayer Then
-                    Set allRegs(regCount) = ent
-                    regCount = regCount + 1
-                End If
+                Set allRegs(regCount) = ent
+                regCount = regCount + 1
             End If
         End If
     Next i
@@ -257,4 +255,151 @@ ErrHandler:
     MsgBox "Erro ao calcular peso: " & Err.Description, vbCritical, "Peso da Chapa"
     On Error Resume Next
     doc.EndUndoMark
+End Sub
+
+' ======================================================================== '
+' ToggleShapeExclusion
+' -----------------------------------------------------------------------  '
+' Temporarily exclude (or re-include) individual regions from the weight
+' calculation without touching their color.
+'
+' Mechanism:
+'   - Active regions live on layer "Shapes"  (green)  → counted by weight calc.
+'   - Excluded regions live on layer "Shapes_Skip" (red) → ignored by weight calc.
+'
+' Usage: run this sub, select one or more regions; each one is toggled
+'   between the two layers. Run it again on the same region to restore it.
+' ======================================================================== '
+Public Sub ToggleShapeExclusion()
+    On Error GoTo ErrHandler
+
+    Dim doc As AcadDocument
+    Set doc = ThisDrawing
+
+    ' Hide the form so the user can interact freely with the drawing
+    On Error Resume Next
+    formPerfisul01.Hide
+    On Error GoTo ErrHandler
+
+    ' Ensure both layers exist before saving state (so they appear in the snapshot)
+    EnsureShapesSkipLayer doc
+
+    ' ------------------------------------------------------------------ '
+    ' Save layer visibility state, then hide everything except the two
+    ' Shapes layers so the user sees only what they need to select.
+    ' ------------------------------------------------------------------ '
+    Dim savedCount As Long
+    savedCount = 0
+    Dim savedNames() As String
+    Dim savedOn() As Boolean
+    ReDim savedNames(0 To doc.Layers.Count - 1)
+    ReDim savedOn(0 To doc.Layers.Count - 1)
+
+    Dim lyr As AcadLayer
+    For Each lyr In doc.Layers
+        savedNames(savedCount) = lyr.Name
+        savedOn(savedCount) = lyr.LayerOn
+        savedCount = savedCount + 1
+        Dim layUp As String
+        layUp = UCase$(Trim$(lyr.Name))
+        If layUp <> "SHAPES" And layUp <> "SHAPES_SKIP" Then
+            On Error Resume Next
+            lyr.LayerOn = False
+            Err.Clear
+            On Error GoTo ErrHandler
+        Else
+            On Error Resume Next
+            lyr.LayerOn = True
+            Err.Clear
+            On Error GoTo ErrHandler
+        End If
+    Next lyr
+    doc.Regen acAllViewports
+
+    ' ------------------------------------------------------------------ '
+    ' Build a selection set and let the user pick regions
+    ' ------------------------------------------------------------------ '
+    Dim ss As AcadSelectionSet
+    On Error Resume Next
+    Set ss = doc.SelectionSets.Item("SMW_TOGGLE")
+    If Err.Number = 0 Then ss.Delete
+    Err.Clear
+    On Error GoTo ErrHandler
+    Set ss = doc.SelectionSets.Add("SMW_TOGGLE")
+
+    doc.Utility.Prompt vbCr & "Selecione regiões para (des)ativar no cálculo..." & vbCr
+    ss.SelectOnScreen
+
+    If ss.Count = 0 Then
+        MsgBox "Nenhum objeto selecionado.", vbExclamation, "Excluir/Incluir Forma"
+        GoTo Cleanup
+    End If
+
+    doc.StartUndoMark
+
+    Dim ent As AcadEntity
+    Dim toggled As Long
+    toggled = 0
+    For Each ent In ss
+        If Not TypeOf ent Is AcadRegion Then GoTo NextEnt
+        Dim entLayer As String
+        entLayer = UCase$(Trim$(ent.Layer))
+        Select Case entLayer
+            Case "SHAPES"
+                ent.Layer = "Shapes_Skip"
+            Case "SHAPES_SKIP"
+                ent.Layer = "Shapes"
+            Case Else
+                GoTo NextEnt   ' not a managed shape — skip silently
+        End Select
+        toggled = toggled + 1
+NextEnt:
+    Next ent
+
+    doc.EndUndoMark
+
+    If toggled = 0 Then
+        MsgBox "Nenhuma região nas camadas ""Shapes"" ou ""Shapes_Skip"" foi selecionada.", _
+               vbExclamation, "Excluir/Incluir Forma"
+    Else
+        MsgBox toggled & " região(ões) alternada(s) entre ""Shapes"" e ""Shapes_Skip""." & vbCr & vbCr & _
+               "Regiões em ""Shapes_Skip"" (vermelho) serão ignoradas no cálculo de peso.", _
+               vbInformation, "Excluir/Incluir Forma"
+    End If
+
+    GoTo Cleanup
+
+ErrHandler:
+    MsgBox "Erro ao alternar exclusão: " & Err.Description, vbCritical, "Excluir/Incluir Forma"
+    On Error Resume Next
+    doc.EndUndoMark
+Cleanup:
+    ' Restore every layer to its original visibility state
+    On Error Resume Next
+    Dim k As Long
+    For k = 0 To savedCount - 1
+        Dim lyrR As AcadLayer
+        Set lyrR = doc.Layers.Item(savedNames(k))
+        If Err.Number = 0 Then lyrR.LayerOn = savedOn(k)
+        Err.Clear
+    Next k
+    If savedCount > 0 Then doc.Regen acAllViewports
+
+    ss.Delete
+
+    ' Restore the form
+    formPerfisul01.Show
+    On Error GoTo 0
+End Sub
+
+Private Sub EnsureShapesSkipLayer(doc As AcadDocument)
+    On Error Resume Next
+    Dim lyr As AcadLayer
+    Set lyr = doc.Layers.Item("Shapes_Skip")
+    If Err.Number <> 0 Then
+        Err.Clear
+        Set lyr = doc.Layers.Add("Shapes_Skip")
+        lyr.Color = acRed          ' visually distinct from the green "Shapes" layer
+    End If
+    On Error GoTo 0
 End Sub
