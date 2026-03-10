@@ -383,6 +383,14 @@ Cleanup:
         If Err.Number = 0 Then lyrR.LayerOn = savedOn(k)
         Err.Clear
     Next k
+    ' Always leave Shapes / Shapes_Skip hidden after the tool exits
+    Dim lyrHide As AcadLayer
+    Set lyrHide = doc.Layers.Item("Shapes")
+    If Err.Number = 0 Then lyrHide.LayerOn = False
+    Err.Clear
+    Set lyrHide = doc.Layers.Item("Shapes_Skip")
+    If Err.Number = 0 Then lyrHide.LayerOn = False
+    Err.Clear
     If savedCount > 0 Then doc.Regen acAllViewports
 
     ss.Delete
