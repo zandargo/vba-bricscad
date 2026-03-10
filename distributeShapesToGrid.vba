@@ -267,13 +267,30 @@ End Sub
 ' Shape detection and grouping
 '-----------------------------
 
+Private Function IsExcludedContourLayer(layerName As String) As Boolean
+	Dim lname As String
+	lname = UCase$(layerName)
+	IsExcludedContourLayer = (InStr(1, lname, UCase$("Gravação"), vbTextCompare) > 0) Or _
+	                         (InStr(1, lname, UCase$("Dobra"), vbTextCompare) > 0) Or _
+	                         (InStr(1, lname, UCase$("Texto"), vbTextCompare) > 0)
+End Function
+
 Private Function DetectOuterRegionsFromSelection(doc As AcadDocument, ss As AcadSelectionSet, ByRef allRegions As Collection) As Collection
+	' Build object array excluding entities from layers containing "Gravação", "Dobra" or "Texto"
 	Dim objs() As Object
-	ReDim objs(ss.Count - 1)
 	Dim i As Long
+	Dim objCount As Long: objCount = 0
+	ReDim objs(ss.Count - 1)
 	For i = 0 To ss.Count - 1
-		Set objs(i) = ss.Item(i)
+		Dim candidate As AcadEntity
+		Set candidate = ss.Item(i)
+		If Not IsExcludedContourLayer(candidate.Layer) Then
+			Set objs(objCount) = candidate
+			objCount = objCount + 1
+		End If
 	Next i
+	If objCount = 0 Then Exit Function
+	ReDim Preserve objs(0 To objCount - 1)
     
 	Dim created As Variant
 	On Error Resume Next
