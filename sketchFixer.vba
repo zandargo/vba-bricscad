@@ -13,9 +13,13 @@ Public Sub FixSmallGaps()
     Dim userResponse As VbMsgBoxResult
     Dim unitFactor As Double
     Dim connectingLinesCount As Integer
+    Dim locatorCirclesCount As Integer
+    Dim addLocatorCircles As Boolean
+    Dim locatorCircleRadius As Double
     
     ' Initialize counters
     connectingLinesCount = 0
+    locatorCirclesCount = 0
     
     ' Initialize document and model space
     Set doc = ThisDrawing
@@ -60,6 +64,7 @@ Public Sub FixSmallGaps()
     
     minGap = minGapMm * unitFactor
     maxGap = maxGapMm * unitFactor
+    locatorCircleRadius = (5# / 2#) * unitFactor ' 5 mm diameter circle => 2.5 mm radius
     
     ' Debug info
     MsgBox "Converting " & minGapMm & "-" & maxGapMm & " mm to " & Format(minGap, "0.000000") & "-" & Format(maxGap, "0.000000") & " drawing units", vbInformation
@@ -161,6 +166,13 @@ Public Sub FixSmallGaps()
     
     Dim autoFixMode As Boolean
     autoFixMode = (fixModeResponse = vbNo)
+
+    ' Ask if locator circles should be added before fixing each found gap
+    Dim locatorResponse As VbMsgBoxResult
+    locatorResponse = MsgBox("Add a 5 mm red locator circle at each found gap before fixing?", _
+                            vbYesNoCancel + vbQuestion, "Locator Circles")
+    If locatorResponse = vbCancel Then Exit Sub
+    addLocatorCircles = (locatorResponse = vbYes)
     
     ' Search for gaps between endpoints
     Dim gapsFound As Integer
@@ -201,6 +213,18 @@ Public Sub FixSmallGaps()
                 ' Check if distance is within gap range
                 If distance >= minGap And distance <= maxGap Then
                     gapsFound = gapsFound + 1
+
+                    ' Add optional locator circle centered on the gap midpoint before any fix action
+                    If addLocatorCircles Then
+                        Dim gapCenter(2) As Double
+                        Dim locatorCircle As AcadCircle
+                        gapCenter(0) = (point1(0) + point2(0)) / 2
+                        gapCenter(1) = (point1(1) + point2(1)) / 2
+                        gapCenter(2) = (point1(2) + point2(2)) / 2
+                        Set locatorCircle = modelSpace.AddCircle(gapCenter, locatorCircleRadius)
+                        locatorCircle.Color = acRed
+                        locatorCirclesCount = locatorCirclesCount + 1
+                    End If
                     
                     ' Determine which endpoints are involved
                     Dim endpointDesc As String
@@ -376,6 +400,9 @@ NextCombination:
     Else
         Dim fixSummary As String
         fixSummary = "Gap analysis complete. " & gapsFound & " gaps were found"
+        If addLocatorCircles Then
+            fixSummary = fixSummary & vbCrLf & locatorCirclesCount & " red locator circles were added"
+        End If
         If connectingLinesCount > 0 Then
             fixSummary = fixSummary & vbCrLf & connectingLinesCount & " gaps were filled with red connecting lines"
             fixSummary = fixSummary & vbCrLf & (gapsFound - connectingLinesCount) & " gaps were fixed by moving endpoints"
