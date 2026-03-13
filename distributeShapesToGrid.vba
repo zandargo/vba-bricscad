@@ -62,12 +62,14 @@ Public Sub DistributeShapesToGrid()
 	ReDim regionHeights(1 To outerRegions.Count)
 	ReDim regionLabels(1 To outerRegions.Count)
     
-	' Ask user for target orientation before rotating shapes
-	Dim orientVertical As Boolean
-	orientVertical = (MsgBox("Qual é a orientação alvo das células?" & vbCr & vbCr & _
-		"[Sim] Horizontal — minimiza altura da forma, escala pela largura (padrão)" & vbCr & _
-		"[Não] Vertical  — minimiza largura da forma, escala pela altura", _
-		vbYesNo + vbQuestion, "Orientação das Formas") = vbNo)
+	' Read orientation mode from formPerfisul01 option buttons:
+	'   0 = Horizontal (maximize width), 1 = Vertical (maximize height), 2 = Diagonal
+	Dim orientMode As Integer
+	orientMode = 0
+	On Error Resume Next
+	If formPerfisul01.optOrientVertical.Value Then orientMode = 1
+	If formPerfisul01.optOrientdiagonal.Value Then orientMode = 2
+	On Error GoTo ErrHandler
 
 	Dim i As Long
 	Dim maxWidth As Double: maxWidth = 0
@@ -86,15 +88,19 @@ Public Sub DistributeShapesToGrid()
 		centerPt = GetEntitySetCenter(reg)
 		regionCenters(i) = centerPt
         
-		Dim bestDim As Double
-		Dim bestAngle As Double
-		bestAngle = FindBestRotationAngleForEntities(ents, centerPt, bestDim, orientVertical)
-		If Abs(bestAngle) > 0.001 Then
-			RotateEntities ents, centerPt, bestAngle
-		End If
-        
 		Dim minPt As Variant, maxPt As Variant
-		GetEntitiesBounds ents, minPt, maxPt
+		If orientMode = 2 Then
+			' Diagonal: defer rotation until after grid is detected (cell dimensions needed)
+			GetEntitiesBounds ents, minPt, maxPt
+		Else
+			Dim bestDim As Double
+			Dim bestAngle As Double
+			bestAngle = FindBestRotationAngleForEntities(ents, centerPt, bestDim, (orientMode = 1))
+			If Abs(bestAngle) > 0.001 Then
+				RotateEntities ents, centerPt, bestAngle
+			End If
+			GetEntitiesBounds ents, minPt, maxPt
+		End If
 		regionWidths(i) = maxPt(0) - minPt(0)
 		regionHeights(i) = maxPt(1) - minPt(1)
 		If regionWidths(i) > maxWidth Then maxWidth = regionWidths(i)
@@ -119,6 +125,43 @@ Public Sub DistributeShapesToGrid()
 		GoTo Cleanup
 	End If
     
+	' Diagonal orientation: rotate each shape so its bounding-box diagonal matches the cell diagonal,
+	' then recompute maxWidth/maxHeight with the rotated bounds.
+	If orientMode = 2 Then
+		Const PI_DIAG As Double = 3.14159265358979
+		Dim cellDiagAngle As Double
+		If cellWidth > 0 Then
+			cellDiagAngle = Atn(cellHeight / cellWidth)
+		Else
+			cellDiagAngle = PI_DIAG / 2
+		End If
+		maxWidth = 0
+		maxHeight = 0
+		Dim j As Long
+		For j = 1 To regionEntities.Count
+			Dim diagEnts As Collection
+			Set diagEnts = regionEntities(j)
+			Dim dBmin As Variant, dBmax As Variant
+			GetEntitiesBounds diagEnts, dBmin, dBmax
+			Dim diagCenter(0 To 2) As Double
+			diagCenter(0) = (dBmin(0) + dBmax(0)) / 2
+			diagCenter(1) = (dBmin(1) + dBmax(1)) / 2
+			diagCenter(2) = 0
+			Dim diagAngle As Double
+			diagAngle = FindDiagonalRotationAngleForEntities(diagEnts, diagCenter, cellDiagAngle)
+			If Abs(diagAngle) > 0.001 Then
+				RotateEntities diagEnts, diagCenter, diagAngle
+			End If
+			Dim dMinPt As Variant, dMaxPt As Variant
+			GetEntitiesBounds diagEnts, dMinPt, dMaxPt
+			Dim dW As Double, dH As Double
+			dW = dMaxPt(0) - dMinPt(0)
+			dH = dMaxPt(1) - dMinPt(1)
+			If dW > maxWidth Then maxWidth = dW
+			If dH > maxHeight Then maxHeight = dH
+		Next j
+	End If
+
 	If maxWidth <= 0 Or cellWidth <= 0 Then
 		MsgBox "Falha ao calcular larguras.", vbExclamation, "Distribuir Formas"
 		GoTo Cleanup
@@ -135,7 +178,7 @@ Public Sub DistributeShapesToGrid()
 	Dim heightPaddingFactor As Double
 	heightPaddingFactor = 1.2
 	Dim scaleFactor As Double
-	If orientVertical Then
+	If orientMode = 1 Then
 		' Vertical: scale so the tallest region fits cell height (using effective body area)
 		Const CELL_BODY_RATIO_V As Double = 1
 		Dim effectiveCellHeightV As Double
@@ -145,7 +188,15 @@ Public Sub DistributeShapesToGrid()
 		Else
 			scaleFactor = 1
 		End If
+	ElseIf orientMode = 2 Then
+		' Diagonal: scale grid so the cell contains the shape in both dimensions;
+		' use whichever axis is the binding constraint.
+		Dim scaleByW As Double, scaleByH As Double
+		scaleByW = (maxWidth / cellWidth) * widthPaddingFactor
+		scaleByH = (maxHeight / cellHeight) * heightPaddingFactor
+		scaleFactor = IIf(scaleByW > scaleByH, scaleByW, scaleByH)
 	Else
+		' Horizontal: scale so the widest region fits cell width
 		scaleFactor = (maxWidth / cellWidth) * widthPaddingFactor
 	End If
 	
@@ -186,16 +237,19 @@ Public Sub DistributeShapesToGrid()
 	Dim effectiveCellHeight As Double
 	effectiveCellHeight = cellHeight * CELL_BODY_RATIO
 	Dim needsSecondScale As Boolean
-	If orientVertical Then
+	If orientMode = 1 Then
 		' Vertical: check region width vs cell width
 		needsSecondScale = (maxWidth > 0 And cellWidth > 0 And cellWidth < maxWidth * widthPaddingFactor)
+	ElseIf orientMode = 2 Then
+		' Diagonal: both dimensions already handled in scaleFactor; no second scale needed
+		needsSecondScale = False
 	Else
 		' Horizontal: check region height vs effective cell height
 		needsSecondScale = (maxHeight > 0 And effectiveCellHeight > 0 And effectiveCellHeight < maxHeight)
 	End If
 	If needsSecondScale Then
 		Dim heightAdjFactor As Double
-		If orientVertical Then
+		If orientMode = 1 Then
 			heightAdjFactor = (maxWidth * widthPaddingFactor) / cellWidth
 		Else
 			heightAdjFactor = (maxHeight * heightPaddingFactor) / effectiveCellHeight
@@ -560,6 +614,40 @@ Private Function FindBestRotationAngleForEntities(ents As Collection, centerPt()
 	Next deg
 	dimensionOut = bestDim
 	FindBestRotationAngleForEntities = bestAngle
+End Function
+
+' Find the rotation angle (0–180°) that makes the shape's bounding-box diagonal angle
+' closest to the target cell diagonal angle (in radians, measured from horizontal).
+Private Function FindDiagonalRotationAngleForEntities(ents As Collection, centerPt() As Double, cellDiagAngle As Double) As Double
+	Const STEP_DEG As Double = 1
+	Const PI_FD As Double = 3.14159265358979
+
+	Dim points() As Point2D
+	Dim numPoints As Long
+	numPoints = CollectSamplingPointsFromCollection(ents, centerPt, points)
+
+	Dim bestAngle As Double: bestAngle = 0
+	Dim bestDiff As Double: bestDiff = 1E+30
+
+	Dim deg As Double, angle As Double
+	Dim width As Double, height As Double
+	Dim shapeDiagAngle As Double, diff As Double
+	For deg = 0 To 180 Step STEP_DEG
+		angle = deg * PI_FD / 180
+		GetRotatedBoundsFromPoints points, numPoints, angle, width, height
+		If width > 0 Then
+			shapeDiagAngle = Atn(height / width)
+		Else
+			shapeDiagAngle = PI_FD / 2
+		End If
+		diff = Abs(shapeDiagAngle - cellDiagAngle)
+		If diff > PI_FD / 2 Then diff = PI_FD - diff  ' wrap to [0, π/2]
+		If diff < bestDiff Then
+			bestDiff = diff
+			bestAngle = angle
+		End If
+	Next deg
+	FindDiagonalRotationAngleForEntities = bestAngle
 End Function
 
 Private Function CollectSamplingPointsFromCollection(ents As Collection, centerPt() As Double, ByRef pointsOut() As Point2D) As Long
@@ -1460,6 +1548,7 @@ Private Function ContainsExcludedKeyword(textVal As String) As Boolean
 	If normalized = "tampa" Then ContainsExcludedKeyword = True: Exit Function
 	If normalized = "vidros" Then ContainsExcludedKeyword = True: Exit Function
 	If normalized = "teto" Then ContainsExcludedKeyword = True: Exit Function
+	If normalized = "carrinho" Then ContainsExcludedKeyword = True: Exit Function
 End Function
 
 Private Function OrderRegionsByLabel(regionEntities As Collection, ByRef labels() As String) As Collection
