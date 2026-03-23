@@ -265,8 +265,9 @@ Private Function SampleArc(ByVal arc As Object, ByVal ssIdx As Long, _
                             ByRef seg As Segment) As Boolean
     Dim startAng As Double: startAng = arc.StartAngle
     Dim endAng   As Double: endAng   = arc.EndAngle
-    Dim cx As Double:       cx = arc.Center(0)
-    Dim cy As Double:       cy = arc.Center(1)
+    Dim cpt As Variant:     cpt = arc.Center
+    Dim cx As Double:       cx = cpt(0)
+    Dim cy As Double:       cy = cpt(1)
     Dim r  As Double:       r  = arc.Radius
 
     ' Normalise so we sweep CCW from startAng to endAng
